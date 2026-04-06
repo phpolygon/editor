@@ -2,7 +2,7 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "phpolygon/editor",
     "type": "project",
-    "description": "PHPolygon Editor — NativePHP desktop app for visual scene editing",
+    "description": "PHPolygon Editor \u2014 NativePHP desktop app for visual scene editing",
     "keywords": [
         "phpolygon",
         "game-engine",
@@ -11,14 +11,17 @@
     ],
     "license": "MIT",
     "repositories": [
-        { "type": "path", "url": "../phpolygon", "options": { "symlink": true } }
+        {
+            "type": "github",
+            "url": "https://github.com/phpolygon/phpolygon"
+        }
     ],
     "require": {
         "php": "^8.2",
         "laravel/framework": "^11.31",
         "laravel/tinker": "^2.9",
         "nativephp/desktop": "^2.1",
-        "phpolygon/phpolygon": "@dev"
+        "phpolygon/phpolygon": "0.9.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -50,7 +53,7 @@
         ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force",
-            "@php artisan native:install --force --quiet "
+            "@php artisan native:install --force --quiet --publish"
         ],
         "post-root-package-install": [
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
@@ -82,7 +85,5 @@
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
         }
-    },
-    "minimum-stability": "stable",
-    "prefer-stable": true
+    }
 }
