@@ -7,7 +7,7 @@ A desktop scene editor for the [PHPolygon](https://github.com/phpolygon/phpolygo
 - PHP 8.2+
 - Node.js 18+
 - Composer
-- The `phpolygon/phpolygon` engine package (linked as a local path repository)
+- The `phpolygon/phpolygon` engine package
 
 ## Setup
 
