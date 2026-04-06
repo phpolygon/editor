@@ -43,15 +43,29 @@ export interface ComponentSchemaDTO {
 // ─── API Responses ──────────────────────────────────────────────────────────
 
 export interface ApiResponse<T = unknown> {
-    success: boolean;
+    ok: boolean;
     data: T;
     error?: string;
 }
 
 export interface CommandResponse<T = unknown> {
-    success: boolean;
+    ok: boolean;
     data: T;
     error?: string;
+}
+
+// ─── Asset Browser ───���────────────────────────���────────────────────────────
+
+export interface AssetFileEntry {
+    name: string;
+    isDir: boolean;
+    size: number;
+    ext: string | null;
+}
+
+export interface AssetListResponse {
+    files: AssetFileEntry[];
+    path: string;
 }
 
 export interface HierarchyResponse {

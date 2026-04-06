@@ -3,10 +3,13 @@ import { ref } from 'vue';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import HierarchyNode from './HierarchyNode.vue';
 import { useSceneStore } from '@/stores/scene';
+import { useToast } from '@/composables/useToast';
 
 const sceneStore = useSceneStore();
+const { addToast } = useToast();
 const newEntityName = ref('');
 const showInput = ref(false);
+const rootDragOver = ref(false);
 
 async function addRootEntity() {
     if (!showInput.value) {
@@ -18,11 +21,36 @@ async function addRootEntity() {
     await sceneStore.createEntity(name);
     newEntityName.value = '';
     showInput.value = false;
+    addToast(`Entity "${name}" created`, 'info');
 }
 
 function cancelAdd() {
     showInput.value = false;
     newEntityName.value = '';
+}
+
+// Root-level drop: reparent to root (null parent)
+function onRootDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    rootDragOver.value = true;
+}
+
+function onRootDragLeave() {
+    rootDragOver.value = false;
+}
+
+async function onRootDrop(e: DragEvent) {
+    e.preventDefault();
+    rootDragOver.value = false;
+    const entityName = e.dataTransfer?.getData('text/plain');
+    if (!entityName) return;
+
+    try {
+        await sceneStore.reparentEntity(entityName, null);
+    } catch {
+        addToast('Reparent failed', 'error');
+    }
 }
 </script>
 
@@ -30,7 +58,13 @@ function cancelAdd() {
     <div class="flex flex-col h-full bg-editor-panel">
         <PanelHeader title="Hierarchy" />
 
-        <div class="flex-1 overflow-y-auto p-1">
+        <div
+            class="flex-1 overflow-y-auto p-1"
+            :class="{ 'bg-editor-accent/5': rootDragOver }"
+            @dragover="onRootDragOver"
+            @dragleave="onRootDragLeave"
+            @drop="onRootDrop"
+        >
             <template v-if="sceneStore.entities.length > 0">
                 <HierarchyNode
                     v-for="node in sceneStore.entities"
@@ -39,6 +73,9 @@ function cancelAdd() {
                     :depth="0"
                 />
             </template>
+            <div v-else-if="sceneStore.loading" class="text-xs text-editor-muted p-2">
+                Loading...
+            </div>
             <div v-else class="text-xs text-editor-muted p-2">
                 No scene loaded
             </div>

@@ -13,44 +13,48 @@ function cmd<T = unknown>(command: string, args: Record<string, unknown> = {}): 
 }
 
 export function listComponents(grouped = true): Promise<ComponentListResponse> {
-    return cmd<ComponentListResponse>('listComponents', { grouped });
+    return cmd<ComponentListResponse>('list_components', { grouped });
 }
 
 export function getComponentSchema(className: string): Promise<SchemaResponse> {
-    return cmd<SchemaResponse>('getComponentSchema', { className });
+    return cmd<SchemaResponse>('get_component_schema', { className });
 }
 
 export function loadScene(sceneName: string): Promise<SceneData> {
-    return cmd<SceneData>('loadScene', { sceneName });
+    return cmd<SceneData>('load_scene', { sceneName });
 }
 
 export function saveScene(): Promise<{ saved: boolean }> {
-    return cmd<{ saved: boolean }>('saveScene');
+    return cmd<{ saved: boolean }>('save_scene');
+}
+
+export function listScenes(): Promise<{ scenes: string[] }> {
+    return cmd<{ scenes: string[] }>('list_scenes');
 }
 
 export function createEntity(
     name: string,
     parent: string | null = null,
 ): Promise<EntityNode> {
-    return cmd<EntityNode>('createEntity', { name, parent });
+    return cmd<EntityNode>('create_entity', { name, parent });
 }
 
 export function deleteEntity(name: string): Promise<{ deleted: boolean }> {
-    return cmd<{ deleted: boolean }>('deleteEntity', { name });
+    return cmd<{ deleted: boolean }>('delete_entity', { name });
 }
 
 export function addComponent(
     entity: string,
     component: string,
 ): Promise<{ added: boolean }> {
-    return cmd<{ added: boolean }>('addComponent', { entity, component });
+    return cmd<{ added: boolean }>('add_component', { entity, component });
 }
 
 export function removeComponent(
     entity: string,
     component: string,
 ): Promise<{ removed: boolean }> {
-    return cmd<{ removed: boolean }>('removeComponent', { entity, component });
+    return cmd<{ removed: boolean }>('remove_component', { entity, component });
 }
 
 export function updateProperty(
@@ -59,7 +63,7 @@ export function updateProperty(
     property: string,
     value: unknown,
 ): Promise<{ updated: boolean }> {
-    return cmd<{ updated: boolean }>('updateProperty', {
+    return cmd<{ updated: boolean }>('update_property', {
         entity,
         component,
         property,
@@ -68,7 +72,7 @@ export function updateProperty(
 }
 
 export function getEntityHierarchy(): Promise<HierarchyResponse> {
-    return cmd<HierarchyResponse>('getEntityHierarchy');
+    return cmd<HierarchyResponse>('get_entity_hierarchy');
 }
 
 export function undo(): Promise<{ undone: boolean }> {
@@ -83,5 +87,12 @@ export function renameEntity(
     oldName: string,
     newName: string,
 ): Promise<{ renamed: boolean }> {
-    return cmd<{ renamed: boolean }>('renameEntity', { oldName, newName });
+    return cmd<{ renamed: boolean }>('rename_entity', { oldName, newName });
+}
+
+export function reparentEntity(
+    entity: string,
+    newParent: string | null,
+): Promise<{ reparented: boolean }> {
+    return cmd<{ reparented: boolean }>('reparent_entity', { entity, newParent });
 }

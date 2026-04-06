@@ -1,7 +1,18 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { get } from '@/bridge/api';
-import type { ProjectConfig } from '@/types';
+import { get, post } from '@/bridge/api';
+import { useSceneStore } from './scene';
+
+interface ProjectData {
+    manifest: {
+        name: string;
+        version: string;
+        scenesPath: string;
+        assetsPath: string;
+        entryScene: string;
+    };
+    components?: Record<string, unknown>;
+}
 
 export const useProjectStore = defineStore('project', () => {
     const name = ref('');
@@ -9,21 +20,48 @@ export const useProjectStore = defineStore('project', () => {
     const scenesPath = ref('');
     const assetsPath = ref('');
     const entryScene = ref('');
-    const scenes = ref<string[]>([]);
     const opened = ref(false);
 
-    async function openProject(dir?: string) {
-        const config = await get<ProjectConfig>(
-            dir ? `/project?dir=${encodeURIComponent(dir)}` : '/project',
-        );
-
-        name.value = config.name;
-        projectDir.value = config.projectDir;
-        scenesPath.value = config.scenesPath;
-        assetsPath.value = config.assetsPath;
-        entryScene.value = config.entryScene;
-        scenes.value = config.scenes;
+    function applyManifest(data: ProjectData) {
+        name.value = data.manifest.name;
+        scenesPath.value = data.manifest.scenesPath;
+        assetsPath.value = data.manifest.assetsPath;
+        entryScene.value = data.manifest.entryScene;
         opened.value = true;
+    }
+
+    async function openProject(dir: string) {
+        const data = await post<ProjectData>('/project/open', { dir });
+        projectDir.value = dir;
+        applyManifest(data);
+
+        const sceneStore = useSceneStore();
+        await sceneStore.fetchSceneList();
+        if (data.manifest.entryScene) {
+            await sceneStore.load(data.manifest.entryScene);
+        }
+    }
+
+    async function openProjectWithDialog() {
+        const data = await post<ProjectData & { projectDir?: string }>('/project/open-dialog');
+        if (data.projectDir) {
+            projectDir.value = data.projectDir;
+        }
+        applyManifest(data);
+
+        const sceneStore = useSceneStore();
+        await sceneStore.fetchSceneList();
+        if (data.manifest.entryScene) {
+            await sceneStore.load(data.manifest.entryScene);
+        }
+    }
+
+    async function fetchProject() {
+        const data = await get<{ manifest: ProjectData['manifest']; projectDir: string; opened: boolean }>('/project');
+        if (data.opened) {
+            projectDir.value = data.projectDir;
+            applyManifest({ manifest: data.manifest });
+        }
     }
 
     return {
@@ -32,8 +70,9 @@ export const useProjectStore = defineStore('project', () => {
         scenesPath,
         assetsPath,
         entryScene,
-        scenes,
         opened,
         openProject,
+        openProjectWithDialog,
+        fetchProject,
     };
 });

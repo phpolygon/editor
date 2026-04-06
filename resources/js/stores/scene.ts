@@ -8,6 +8,7 @@ export const useSceneStore = defineStore('scene', () => {
     const entities = ref<EntityNode[]>([]);
     const dirty = ref(false);
     const loading = ref(false);
+    const sceneList = ref<string[]>([]);
 
     const entityCount = computed(() => {
         let count = 0;
@@ -21,13 +22,22 @@ export const useSceneStore = defineStore('scene', () => {
         return count;
     });
 
-    function findEntity(name: string, nodes?: EntityNode[]): EntityNode | null {
+    function findEntity(entityName: string, nodes?: EntityNode[]): EntityNode | null {
         for (const n of nodes ?? entities.value) {
-            if (n.name === name) return n;
-            const found = findEntity(name, n.children);
+            if (n.name === entityName) return n;
+            const found = findEntity(entityName, n.children);
             if (found) return found;
         }
         return null;
+    }
+
+    async function fetchSceneList() {
+        try {
+            const data = await commands.listScenes();
+            sceneList.value = data.scenes;
+        } catch {
+            sceneList.value = [];
+        }
     }
 
     async function load(sceneName: string) {
@@ -100,6 +110,12 @@ export const useSceneStore = defineStore('scene', () => {
         dirty.value = true;
     }
 
+    async function reparentEntity(entityName: string, newParent: string | null) {
+        await commands.reparentEntity(entityName, newParent);
+        await refreshHierarchy();
+        dirty.value = true;
+    }
+
     async function undoAction() {
         await commands.undo();
         await refreshHierarchy();
@@ -115,8 +131,10 @@ export const useSceneStore = defineStore('scene', () => {
         entities,
         dirty,
         loading,
+        sceneList,
         entityCount,
         findEntity,
+        fetchSceneList,
         load,
         save,
         refreshHierarchy,
@@ -126,6 +144,7 @@ export const useSceneStore = defineStore('scene', () => {
         removeComponent,
         updateProperty,
         renameEntity,
+        reparentEntity,
         undoAction,
         redoAction,
     };

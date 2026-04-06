@@ -47,7 +47,7 @@ async function request<T>(
 
     const json: ApiResponse<T> = await res.json();
 
-    if (!json.success) {
+    if (!json.ok) {
         throw new ApiError(json.error ?? 'Unknown API error', res.status, json);
     }
 

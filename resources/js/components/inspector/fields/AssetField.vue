@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { post } from '@/bridge/api';
+import { useToast } from '@/composables/useToast';
+
 defineProps<{
     label: string;
     modelValue: string;
@@ -8,13 +11,21 @@ const emit = defineEmits<{
     'update:modelValue': [value: string];
 }>();
 
+const { addToast } = useToast();
+
 function onInput(e: Event) {
     emit('update:modelValue', (e.target as HTMLInputElement).value);
 }
 
-function browse() {
-    // Placeholder: will integrate with NativePHP file dialog
-    console.log('Asset browse not yet implemented');
+async function browse() {
+    try {
+        const data = await post<{ path: string }>('/assets/browse');
+        emit('update:modelValue', data.path);
+    } catch (e: any) {
+        if (e?.message !== 'No file selected') {
+            addToast(e?.message ?? 'Browse failed', 'error');
+        }
+    }
 }
 </script>
 
