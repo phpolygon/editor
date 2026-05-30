@@ -110,3 +110,43 @@ export interface Color {
     b: number;
     a: number;
 }
+
+// ─── Mesh / Material ────────────────────────────────────────────────────────
+
+export interface MeshListEntry {
+    id: string;
+    version: number;
+    pending: boolean;
+}
+
+export interface MeshListResponse {
+    meshes: MeshListEntry[];
+}
+
+export interface MeshData {
+    id: string;
+    version: number;
+    vertices: number[];
+    normals: number[];
+    uvs: number[];
+    indices: number[];
+    vertexCount: number;
+    triangleCount: number;
+}
+
+export interface MaterialData {
+    id: string;
+    albedo: Color;
+    roughness: number;
+    metallic: number;
+    emission: Color;
+    alpha: number;
+    shader: string;
+    albedoTexture: string | null;
+    clearcoat: number;
+    clearcoatRoughness: number;
+    normalIntensity: number;
+    useEnvironmentMap: boolean;
+    normalPattern: string | null;
+    surfacePattern: string | null;
+}

@@ -5,18 +5,25 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use PHPolygon\Editor\Command\AddComponentCommand;
 use PHPolygon\Editor\Command\CreateEntityCommand;
+use PHPolygon\Editor\Command\CreatePrimitiveCommand;
 use PHPolygon\Editor\Command\DeleteEntityCommand;
 use PHPolygon\Editor\Command\EditorCommandBus;
 use PHPolygon\Editor\Command\GetComponentSchemaCommand;
 use PHPolygon\Editor\Command\GetEntityHierarchyCommand;
+use PHPolygon\Editor\Command\GetMaterialCommand;
+use PHPolygon\Editor\Command\GetMeshCommand;
 use PHPolygon\Editor\Command\ListComponentsCommand;
+use PHPolygon\Editor\Command\ListMaterialsCommand;
+use PHPolygon\Editor\Command\ListMeshesCommand;
 use PHPolygon\Editor\Command\ListScenesCommand;
 use PHPolygon\Editor\Command\LoadSceneCommand;
 use PHPolygon\Editor\Command\RedoCommand;
 use PHPolygon\Editor\Command\RemoveComponentCommand;
 use PHPolygon\Editor\Command\RenameEntityCommand;
 use PHPolygon\Editor\Command\ReparentEntityCommand;
+use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SaveSceneCommand;
+use PHPolygon\Editor\Command\SpawnPrefabCommand;
 use PHPolygon\Editor\Command\UndoCommand;
 use PHPolygon\Editor\Command\UpdatePropertyCommand;
 use PHPolygon\Editor\EditorContext;
@@ -51,13 +58,30 @@ class EditorServiceProvider extends ServiceProvider
                 $manifest = $app->make(ProjectLoader::class)->load($projectDir);
             }
 
-            return new EditorContext(
+            $ctx = new EditorContext(
                 manifest: $manifest,
                 components: $app->make(ComponentRegistry::class),
                 systems: $app->make(SystemRegistry::class),
                 transpiler: $app->make(SceneTranspiler::class),
                 projectDir: $projectDir,
             );
+
+            // Session-backed persistence so the active scene survives
+            // between stateless HTTP requests (NativePHP keeps the process
+            // alive and would not need this).
+            $ctx->loadDocumentArray = static function (): ?array {
+                $stored = session('editor_active_document');
+                return is_array($stored) ? $stored : null;
+            };
+            $ctx->persistDocumentArray = static function (?array $data): void {
+                if ($data === null) {
+                    session()->forget('editor_active_document');
+                } else {
+                    session(['editor_active_document' => $data]);
+                }
+            };
+
+            return $ctx;
         });
 
         $this->app->singleton(EditorCommandBus::class, function ($app) {
@@ -78,6 +102,13 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('redo', RedoCommand::class);
             $bus->register('rename_entity', RenameEntityCommand::class);
             $bus->register('reparent_entity', ReparentEntityCommand::class);
+            $bus->register('list_meshes', ListMeshesCommand::class);
+            $bus->register('get_mesh', GetMeshCommand::class);
+            $bus->register('list_materials', ListMaterialsCommand::class);
+            $bus->register('get_material', GetMaterialCommand::class);
+            $bus->register('create_primitive', CreatePrimitiveCommand::class);
+            $bus->register('save_prefab', SavePrefabCommand::class);
+            $bus->register('spawn_prefab', SpawnPrefabCommand::class);
 
             return $bus;
         });

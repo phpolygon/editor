@@ -6,6 +6,9 @@ import type {
     HierarchyResponse,
     ComponentSchemaDTO,
     EntityNode,
+    MeshListResponse,
+    MeshData,
+    MaterialData,
 } from '@/types';
 
 function cmd<T = unknown>(command: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -95,4 +98,48 @@ export function reparentEntity(
     newParent: string | null,
 ): Promise<{ reparented: boolean }> {
     return cmd<{ reparented: boolean }>('reparent_entity', { entity, newParent });
+}
+
+export function listMeshes(): Promise<MeshListResponse> {
+    return cmd<MeshListResponse>('list_meshes');
+}
+
+export function getMesh(id: string): Promise<MeshData> {
+    return cmd<MeshData>('get_mesh', { id });
+}
+
+export function listMaterials(): Promise<{ materials: string[] }> {
+    return cmd<{ materials: string[] }>('list_materials');
+}
+
+export function getMaterial(id: string): Promise<MaterialData> {
+    return cmd<MaterialData>('get_material', { id });
+}
+
+export function assetFileUrl(relativePath: string): string {
+    return `/api/editor/assets/file?path=${encodeURIComponent(relativePath)}`;
+}
+
+export type PrimitiveType = 'box' | 'sphere' | 'cylinder' | 'plane';
+
+export function createPrimitive(
+    type: PrimitiveType,
+    parent: string | null = null,
+    name: string | null = null,
+): Promise<{ created: string; parent: string | null; meshId: string; materialId: string }> {
+    return cmd('create_primitive', { type, parent, name });
+}
+
+export function savePrefab(
+    entityName: string,
+    prefabName: string | null = null,
+): Promise<{ saved: boolean; name: string; path: string; relativePath: string }> {
+    return cmd('save_prefab', { entityName, prefabName });
+}
+
+export function spawnPrefab(
+    path: string,
+    parent: string | null = null,
+): Promise<{ spawned: string; parent: string | null }> {
+    return cmd('spawn_prefab', { path, parent });
 }

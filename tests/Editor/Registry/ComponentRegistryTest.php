@@ -30,7 +30,7 @@ class ComponentRegistryTest extends TestCase
     public function testScanDirectory(): void
     {
         $registry = new ComponentRegistry();
-        $componentDir = dirname(__DIR__, 3) . '/src/Component';
+        $componentDir = dirname(__DIR__, 3) . '/vendor/phpolygon/phpolygon/src/Component';
         $registry->scan($componentDir, 'PHPolygon\\Component\\');
 
         $this->assertTrue($registry->has(Transform2D::class));

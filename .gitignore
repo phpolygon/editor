@@ -6,6 +6,11 @@
 /storage/*.key
 /storage/pail
 /vendor
+/nativephp
+/test-results
+/playwright-report
+/playwright/.cache
+/database/database.sqlite
 .env
 .env.backup
 .env.production

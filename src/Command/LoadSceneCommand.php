@@ -16,10 +16,10 @@ class LoadSceneCommand implements CommandInterface
 
     public function execute(EditorContext $context): array
     {
-        if (!isset($this->args['scene'])) {
-            throw new RuntimeException("Missing 'scene' argument");
+        $sceneName = (string)($this->args['sceneName'] ?? $this->args['scene'] ?? '');
+        if ($sceneName === '') {
+            throw new RuntimeException("Missing 'sceneName' argument");
         }
-        $sceneName = is_string($this->args['scene']) ? $this->args['scene'] : '';
 
         $scenesDir = $context->getScenesDir();
         $sceneFile = $scenesDir . DIRECTORY_SEPARATOR . $sceneName . '.php';
@@ -45,7 +45,7 @@ class LoadSceneCommand implements CommandInterface
         }
         $data = $context->transpiler->toArray($scene);
 
-        $context->activeDocument = new SceneDocument($data);
+        $context->setActiveDocument(new SceneDocument($data));
 
         return $data;
     }

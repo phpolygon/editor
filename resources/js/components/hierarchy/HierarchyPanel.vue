@@ -65,19 +65,17 @@ async function onRootDrop(e: DragEvent) {
             @dragleave="onRootDragLeave"
             @drop="onRootDrop"
         >
-            <template v-if="sceneStore.entities.length > 0">
-                <HierarchyNode
-                    v-for="node in sceneStore.entities"
-                    :key="node.name"
-                    :node="node"
-                    :depth="0"
-                />
-            </template>
-            <div v-else-if="sceneStore.loading" class="text-xs text-editor-muted p-2">
-                Loading...
-            </div>
-            <div v-else class="text-xs text-editor-muted p-2">
-                No scene loaded
+            <HierarchyNode
+                v-for="node in sceneStore.entities"
+                :key="node.name"
+                :node="node"
+                :depth="0"
+            />
+            <div
+                v-if="sceneStore.entities.length === 0"
+                class="text-xs text-editor-muted p-2"
+            >
+                {{ sceneStore.loading ? 'Loading...' : 'No scene loaded' }}
             </div>
         </div>
 

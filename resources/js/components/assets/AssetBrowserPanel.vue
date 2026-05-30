@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { Folder, File, Image, Music, FileText, ChevronRight } from 'lucide-vue-next';
+import { Folder, File, Image, Music, FileText, ChevronRight, Box } from 'lucide-vue-next';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import { useProjectStore } from '@/stores/project';
+import { useSceneStore } from '@/stores/scene';
+import { useSelectionStore } from '@/stores/selection';
+import { useToast } from '@/composables/useToast';
 import { get } from '@/bridge/api';
 import type { AssetFileEntry, AssetListResponse } from '@/types';
 
 const projectStore = useProjectStore();
+const sceneStore = useSceneStore();
+const selectionStore = useSelectionStore();
+const { addToast } = useToast();
 
 const currentPath = ref('');
 const files = ref<AssetFileEntry[]>([]);
@@ -55,6 +61,30 @@ function isImage(ext: string | null) {
 
 function isAudio(ext: string | null) {
     return ext && audioExts.includes(ext.toLowerCase());
+}
+
+function isPrefab(file: AssetFileEntry): boolean {
+    return !file.isDir && file.name.endsWith('.prefab.json');
+}
+
+async function spawnPrefab(file: AssetFileEntry): Promise<void> {
+    if (!isPrefab(file) || !sceneStore.name) return;
+    const fullPath = currentPath.value ? `${currentPath.value}/${file.name}` : file.name;
+    try {
+        const spawned = await sceneStore.spawnPrefab(fullPath, selectionStore.selectedEntity ?? null);
+        selectionStore.selectEntity(spawned);
+        addToast(`Spawned ${spawned}`, 'success');
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to spawn prefab', 'error');
+    }
+}
+
+function onItemDoubleClick(file: AssetFileEntry): void {
+    if (file.isDir) {
+        navigateTo(file.name);
+    } else if (isPrefab(file)) {
+        void spawnPrefab(file);
+    }
 }
 
 function formatSize(bytes: number): string {
@@ -123,16 +153,18 @@ watch(() => projectStore.opened, (opened) => {
                         v-for="file in files"
                         :key="file.name"
                         class="flex flex-col items-center gap-0.5 p-1.5 rounded hover:bg-editor-hover cursor-pointer"
-                        @dblclick="file.isDir ? navigateTo(file.name) : undefined"
+                        :title="isPrefab(file) ? 'Double-click to spawn into scene' : file.name"
+                        @dblclick="onItemDoubleClick(file)"
                         @click="file.isDir ? navigateTo(file.name) : undefined"
                     >
                         <Folder v-if="file.isDir" class="w-6 h-6 text-yellow-500" />
+                        <Box v-else-if="isPrefab(file)" class="w-6 h-6 text-orange-400" />
                         <Image v-else-if="isImage(file.ext)" class="w-6 h-6 text-green-400" />
                         <Music v-else-if="isAudio(file.ext)" class="w-6 h-6 text-purple-400" />
                         <FileText v-else-if="file.ext === 'php' || file.ext === 'json'" class="w-6 h-6 text-blue-400" />
                         <File v-else class="w-6 h-6 text-editor-muted" />
                         <span class="text-[10px] text-editor-text truncate w-full text-center" :title="file.name">
-                            {{ file.name }}
+                            {{ isPrefab(file) ? file.name.replace('.prefab.json', '') : file.name }}
                         </span>
                         <span v-if="!file.isDir" class="text-[9px] text-editor-muted">
                             {{ formatSize(file.size) }}

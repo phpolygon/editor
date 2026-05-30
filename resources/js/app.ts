@@ -1,6 +1,6 @@
-import { createApp } from 'vue';
+import { createApp, h } from 'vue';
 import { createPinia } from 'pinia';
-import { createRouter, createWebHashHistory } from 'vue-router';
+import { createRouter, createWebHashHistory, RouterView } from 'vue-router';
 import EditorLayout from '@/components/layout/EditorLayout.vue';
 
 const router = createRouter({
@@ -10,8 +10,11 @@ const router = createRouter({
     ],
 });
 
+// Render function (not a `template: '...'` string) — the production Vue
+// build ships without the runtime template compiler, so inline template
+// strings silently render nothing.
 const app = createApp({
-    template: '<router-view />',
+    render: () => h(RouterView),
 });
 
 app.use(createPinia());

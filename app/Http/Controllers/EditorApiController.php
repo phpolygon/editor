@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Native\Desktop\Dialog;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use PHPolygon\Editor\Command\EditorCommandBus;
 use PHPolygon\Editor\EditorContext;
 use PHPolygon\Editor\Project\ProjectLoader;
@@ -126,6 +127,26 @@ class EditorApiController extends Controller
         usort($files, fn($a, $b) => ($b['isDir'] <=> $a['isDir']) ?: strcmp($a['name'], $b['name']));
 
         return response()->json(['ok' => true, 'data' => ['files' => $files, 'path' => $subPath]]);
+    }
+
+    public function assetFile(Request $request, EditorContext $context): BinaryFileResponse|JsonResponse
+    {
+        $relPath = (string)$request->input('path', '');
+        if ($relPath === '') {
+            return response()->json(['ok' => false, 'error' => 'Missing path'], 422);
+        }
+
+        $assetsDir = realpath($context->getAssetsDir());
+        if ($assetsDir === false) {
+            return response()->json(['ok' => false, 'error' => 'Assets directory not found'], 404);
+        }
+
+        $candidate = realpath($assetsDir . DIRECTORY_SEPARATOR . $relPath);
+        if ($candidate === false || !is_file($candidate) || !str_starts_with($candidate, $assetsDir . DIRECTORY_SEPARATOR)) {
+            return response()->json(['ok' => false, 'error' => 'File not found'], 404);
+        }
+
+        return response()->file($candidate);
     }
 
     private function loadProject(

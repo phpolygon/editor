@@ -15,7 +15,7 @@ class RedoCommand implements CommandInterface
 
     public function execute(EditorContext $context): array
     {
-        $doc = $context->activeDocument;
+        $doc = $context->getActiveDocument();
         if ($doc === null) {
             throw new RuntimeException("No active scene document");
         }

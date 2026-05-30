@@ -1,0 +1,11 @@
+{
+    "name": "E2E Sample Project",
+    "version": "0.1.0",
+    "engineVersion": "*",
+    "scenesPath": "src/Scene",
+    "assetsPath": "assets",
+    "psr4Roots": {
+        "SampleProject\\": "src/"
+    },
+    "entryScene": "MainScene"
+}

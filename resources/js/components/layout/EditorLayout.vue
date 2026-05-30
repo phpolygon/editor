@@ -11,9 +11,11 @@ import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { useToast } from '@/composables/useToast';
 import { useSceneStore } from '@/stores/scene';
 import { useSelectionStore } from '@/stores/selection';
+import { useProjectStore } from '@/stores/project';
 
 const sceneStore = useSceneStore();
 const selectionStore = useSelectionStore();
+const projectStore = useProjectStore();
 const { addToast } = useToast();
 
 // F2 rename trigger: hierarchy nodes watch this ref
@@ -51,7 +53,20 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
     }
 }
 
-onMounted(() => window.addEventListener('beforeunload', onBeforeUnload));
+onMounted(async () => {
+    window.addEventListener('beforeunload', onBeforeUnload);
+    try {
+        await projectStore.fetchProject();
+        if (projectStore.opened) {
+            await sceneStore.fetchSceneList();
+            if (projectStore.entryScene) {
+                await sceneStore.load(projectStore.entryScene);
+            }
+        }
+    } catch {
+        // Ignore — user can still open a project manually.
+    }
+});
 onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
 </script>
 

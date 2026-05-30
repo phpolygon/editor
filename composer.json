@@ -12,8 +12,11 @@
     "license": "MIT",
     "repositories": [
         {
-            "type": "github",
-            "url": "https://github.com/phpolygon/phpolygon"
+            "type": "path",
+            "url": "../phpolygon",
+            "options": {
+                "symlink": true
+            }
         }
     ],
     "require": {
@@ -21,7 +24,7 @@
         "laravel/framework": "^11.31",
         "laravel/tinker": "^2.9",
         "nativephp/desktop": "^2.1",
-        "phpolygon/phpolygon": "0.9.0"
+        "phpolygon/phpolygon": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -72,6 +75,8 @@
             "npx concurrently -k -c \"#93c5fd,#c4b5fd\" \"php artisan native:run --no-interaction\" \"npm run dev\" --names=app,vite"
         ]
     },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
     "extra": {
         "laravel": {
             "dont-discover": []

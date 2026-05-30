@@ -36,7 +36,16 @@ class EditorCommandBus
 
         $class = $this->commands[$name];
         $command = new $class($args);
-        return $command->execute($this->context);
+        try {
+            return $command->execute($this->context);
+        } finally {
+            // Flush in-memory scene state to the persistence hook so the
+            // next HTTP request rebuilds the same SceneDocument. Cheap
+            // no-op when no persistence hook is wired.
+            if ($this->context->activeDocument !== null) {
+                $this->context->persistActiveDocument();
+            }
+        }
     }
 
     /** @return list<string> */

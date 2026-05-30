@@ -8,6 +8,7 @@ Route::prefix('editor')->group(function () {
     Route::get('/project', [EditorApiController::class, 'project']);
     Route::post('/project/open', [EditorApiController::class, 'openProject']);
     Route::get('/assets', [EditorApiController::class, 'assets']);
+    Route::get('/assets/file', [EditorApiController::class, 'assetFile']);
     Route::post('/project/open-dialog', [EditorApiController::class, 'openProjectDialog']);
     Route::post('/assets/browse', [EditorApiController::class, 'browseAsset']);
 });
