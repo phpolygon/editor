@@ -67,11 +67,23 @@ class EditorApiController extends Controller
         ProjectLoader $loader,
         ComponentRegistry $registry,
     ): JsonResponse {
-        $dir = Dialog::new()
-            ->title('Open PHPolygon Project')
-            ->folders()
-            ->button('Open')
-            ->open();
+        try {
+            $dir = Dialog::new()
+                ->title('Open PHPolygon Project')
+                ->folders()
+                ->button('Open')
+                ->open();
+        } catch (\Throwable $e) {
+            // NativePHP's Dialog facade talks to the Electron bridge on
+            // localhost:4000. Web-only runs (`composer dev`) have no
+            // Electron — the frontend can fall back to prompting for a
+            // path and POSTing to /project/open directly.
+            return response()->json([
+                'ok' => false,
+                'error' => 'Native dialog unavailable',
+                'fallback' => 'path-input',
+            ], 503);
+        }
 
         if (!$dir || !is_dir($dir)) {
             return response()->json(['ok' => false, 'error' => 'No directory selected'], 422);
@@ -82,19 +94,26 @@ class EditorApiController extends Controller
 
     public function browseAsset(EditorContext $context): JsonResponse
     {
-        $assetsDir = $context->getAssetsDir();
-
-        $path = Dialog::new()
-            ->title('Select Asset')
-            ->files()
-            ->defaultPath($assetsDir)
-            ->open();
+        try {
+            $assetsDir = $context->getAssetsDir();
+            $path = Dialog::new()
+                ->title('Select Asset')
+                ->files()
+                ->defaultPath($assetsDir)
+                ->open();
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'Native dialog unavailable',
+                'fallback' => 'path-input',
+            ], 503);
+        }
 
         if (!$path) {
             return response()->json(['ok' => false, 'error' => 'No file selected'], 422);
         }
 
-        // Return path relative to assets directory
+        $assetsDir = $context->getAssetsDir();
         $relativePath = str_starts_with($path, $assetsDir)
             ? ltrim(substr($path, strlen($assetsDir)), DIRECTORY_SEPARATOR)
             : basename($path);

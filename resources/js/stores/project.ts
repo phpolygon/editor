@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { get, post } from '@/bridge/api';
+import { ApiError, get, post } from '@/bridge/api';
 import { useSceneStore } from './scene';
 
 interface ProjectData {
@@ -43,16 +43,29 @@ export const useProjectStore = defineStore('project', () => {
     }
 
     async function openProjectWithDialog() {
-        const data = await post<ProjectData & { projectDir?: string }>('/project/open-dialog');
-        if (data.projectDir) {
-            projectDir.value = data.projectDir;
-        }
-        applyManifest(data);
+        try {
+            const data = await post<ProjectData & { projectDir?: string }>('/project/open-dialog');
+            if (data.projectDir) {
+                projectDir.value = data.projectDir;
+            }
+            applyManifest(data);
 
-        const sceneStore = useSceneStore();
-        await sceneStore.fetchSceneList();
-        if (data.manifest.entryScene) {
-            await sceneStore.load(data.manifest.entryScene);
+            const sceneStore = useSceneStore();
+            await sceneStore.fetchSceneList();
+            if (data.manifest.entryScene) {
+                await sceneStore.load(data.manifest.entryScene);
+            }
+        } catch (e) {
+            // Web-only runs (composer dev) have no NativePHP bridge.
+            // Backend returns 503 + fallback hint; fall back to a path
+            // prompt so the editor still works in the browser.
+            if (e instanceof ApiError && (e.body as { fallback?: string } | undefined)?.fallback === 'path-input') {
+                const dir = window.prompt('Path to PHPolygon project directory:');
+                if (!dir) throw new Error('No directory selected');
+                await openProject(dir);
+                return;
+            }
+            throw e;
         }
     }
 
