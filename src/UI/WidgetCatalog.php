@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace PHPolygon\Editor\UI;
 
+use PHPolygon\UI\Widget\BarChart;
 use PHPolygon\UI\Widget\Button;
+use PHPolygon\UI\Widget\Canvas;
+use PHPolygon\UI\Widget\Grid;
 use PHPolygon\UI\Widget\HBox;
 use PHPolygon\UI\Widget\Label;
 use PHPolygon\UI\Widget\Panel;
 use PHPolygon\UI\Widget\Spacer;
+use PHPolygon\UI\Widget\TabView;
 use PHPolygon\UI\Widget\VBox;
 use PHPolygon\UI\Widget\WidgetSerializer;
 use RuntimeException;
@@ -32,10 +36,14 @@ final class WidgetCatalog
         'Label' => Label::class,
         'Button' => Button::class,
         'Spacer' => Spacer::class,
+        'Grid' => Grid::class,
+        'TabView' => TabView::class,
+        'BarChart' => BarChart::class,
+        'Canvas' => Canvas::class,
     ];
 
     /** Types that accept children in the editor's tree. */
-    private const CONTAINERS = ['Panel', 'VBox', 'HBox'];
+    private const CONTAINERS = ['Panel', 'VBox', 'HBox', 'Grid', 'TabView'];
 
     private WidgetSerializer $serializer;
 
