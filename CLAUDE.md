@@ -8,6 +8,12 @@ PHPolygon Editor is a desktop game scene editor for the PHPolygon engine. It's a
 
 The engine dependency (`phpolygon/phpolygon`) is linked as a local path repository via Composer symlink.
 
+> **Working on UI-layout authoring (widget-tree `*.ui.json`, `WidgetCatalog`,
+> `WidgetDocument`, any `*UiLayout*`/`*Widget*` command, or the `uiEditor` store)?
+> The `ui-design` skill (`.claude/skills/ui-design/SKILL.md`) is BINDING — read it
+> first and follow it.** It defines the design contract a layout must satisfy so a
+> consuming game can bind + render it.
+
 ## Commands
 
 ```bash
