@@ -16,6 +16,12 @@ class PropertySchema
         public readonly ?string $description,
         /** @var array<string, float>|null */
         public readonly ?array $range,
+        /**
+         * For array properties of nested #[Serializable] objects, the fully
+         * qualified class name of the element (from #[Property(type: ...)]).
+         * Drives the inspector's nested object-array editor.
+         */
+        public readonly ?string $elementType = null,
     ) {}
 
     /** @return array<string, mixed> */
@@ -30,6 +36,7 @@ class PropertySchema
             'editorHint' => $this->editorHint,
             'description' => $this->description,
             'range' => $this->range,
-        ], fn($v) => $v !== null);
+            'elementType' => $this->elementType,
+        ], fn ($v) => $v !== null);
     }
 }

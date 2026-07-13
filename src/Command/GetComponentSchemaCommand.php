@@ -21,6 +21,9 @@ class GetComponentSchemaCommand implements CommandInterface
             throw new RuntimeException("Missing 'className' argument");
         }
 
-        return $context->components->get($class)->toArray();
+        // resolve() (not get()) so nested #[Serializable] value objects such as
+        // Feature/Bug — which live inside a component's array but aren't entity
+        // components — are extracted on demand for the inspector.
+        return $context->components->resolve($class)->toArray();
     }
 }

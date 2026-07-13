@@ -19,7 +19,7 @@ class InspectorMetadataExtractor
     private array $cache = [];
 
     /**
-     * @param class-string $className
+     * @param  class-string  $className
      */
     public function extract(string $className): ComponentSchema
     {
@@ -35,7 +35,7 @@ class InspectorMetadataExtractor
 
         // Extract category
         $categoryAttrs = $ref->getAttributes(Category::class);
-        $category = !empty($categoryAttrs) ? $categoryAttrs[0]->newInstance()->name : null;
+        $category = ! empty($categoryAttrs) ? $categoryAttrs[0]->newInstance()->name : null;
 
         // Create a default instance to read property defaults
         $defaultInstance = $ref->newInstanceWithoutConstructor();
@@ -52,7 +52,7 @@ class InspectorMetadataExtractor
         // Extract properties
         $properties = [];
         foreach ($ref->getProperties() as $prop) {
-            if (!empty($prop->getAttributes(Hidden::class))) {
+            if (! empty($prop->getAttributes(Hidden::class))) {
                 continue;
             }
 
@@ -72,7 +72,7 @@ class InspectorMetadataExtractor
             // Range
             $rangeAttrs = $prop->getAttributes(Range::class);
             $range = null;
-            if (!empty($rangeAttrs)) {
+            if (! empty($rangeAttrs)) {
                 /** @var Range $rangeAttr */
                 $rangeAttr = $rangeAttrs[0]->newInstance();
                 $range = ['min' => $rangeAttr->min, 'max' => $rangeAttr->max];
@@ -94,12 +94,16 @@ class InspectorMetadataExtractor
                 editorHint: $propertyAttr->editorHint,
                 description: $propertyAttr->description,
                 range: $range,
+                // #[Property(type: Feature::class)] on an array property → the
+                // element class, so the inspector can render a nested editor.
+                elementType: $propertyAttr->type,
             );
         }
 
         $shortName = $ref->getShortName();
         $schema = new ComponentSchema($className, $shortName, $category, $properties);
         $this->cache[$className] = $schema;
+
         return $schema;
     }
 
@@ -119,5 +123,4 @@ class InspectorMetadataExtractor
 
         return null;
     }
-
 }

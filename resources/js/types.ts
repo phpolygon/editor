@@ -30,6 +30,8 @@ export interface PropertySchemaDTO {
     step?: number;
     options?: string[];
     nullable?: boolean;
+    /** FQCN of the element class for arrays of nested #[Serializable] objects. */
+    elementType?: string;
 }
 
 export interface ComponentSchemaDTO {

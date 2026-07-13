@@ -2,16 +2,8 @@
 import { computed } from 'vue';
 import type { PropertySchemaDTO } from '@/types';
 import { useSceneStore } from '@/stores/scene';
-import FloatField from './FloatField.vue';
-import IntField from './IntField.vue';
-import BoolField from './BoolField.vue';
-import StringField from './StringField.vue';
-import Vec2Field from './Vec2Field.vue';
-import Vec3Field from './Vec3Field.vue';
-import ColorField from './ColorField.vue';
-import SliderField from './SliderField.vue';
-import AngleField from './AngleField.vue';
-import AssetField from './AssetField.vue';
+import { resolveFieldComponent } from './resolveFieldComponent';
+import ObjectArrayField from './ObjectArrayField.vue';
 
 const props = defineProps<{
     schema: PropertySchemaDTO;
@@ -22,39 +14,24 @@ const props = defineProps<{
 
 const sceneStore = useSceneStore();
 
-const fieldComponent = computed(() => {
-    const hint = props.schema.editorHint;
-    const type = props.schema.type;
+// Arrays of nested #[Serializable] objects (element type declared via
+// #[Property(type: ...)]) get the dedicated nested editor; everything else
+// resolves to a leaf field.
+const isObjectArray = computed(() => props.schema.type === 'array' && !!props.schema.elementType);
 
-    // Editor hint takes priority
-    if (hint) {
-        switch (hint) {
-            case 'slider': return SliderField;
-            case 'angle': return AngleField;
-            case 'color': return ColorField;
-            case 'asset': return AssetField;
-            case 'vec2': return Vec2Field;
-            case 'vec3': return Vec3Field;
-        }
-    }
-
-    // Fall back to type
-    switch (type) {
-        case 'float':
-        case 'double': return FloatField;
-        case 'int':
-        case 'integer': return IntField;
-        case 'bool':
-        case 'boolean': return BoolField;
-        case 'string': return StringField;
-        case 'Vec2': return Vec2Field;
-        case 'Vec3': return Vec3Field;
-        case 'Color': return ColorField;
-        default: return StringField;
-    }
-});
+const fieldComponent = computed(() =>
+    isObjectArray.value ? ObjectArrayField : resolveFieldComponent(props.schema),
+);
 
 const fieldProps = computed(() => {
+    if (isObjectArray.value) {
+        return {
+            label: props.schema.name,
+            modelValue: props.value ?? props.schema.default ?? [],
+            elementType: props.schema.elementType,
+        };
+    }
+
     const base: Record<string, unknown> = {
         label: props.schema.name,
         modelValue: props.value ?? props.schema.default,

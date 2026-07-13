@@ -97,6 +97,24 @@ class ComponentRegistry
         return $this->components[$className];
     }
 
+    /**
+     * Return a schema, extracting it on demand when it was never scanned. This
+     * surfaces nested #[Serializable] value objects (e.g. Feature/Bug) that are
+     * not entity components themselves but appear inside a component's array
+     * property, so the inspector can render them. Throws if the class is not a
+     * #[Serializable].
+     *
+     * @param  class-string  $className
+     */
+    public function resolve(string $className): ComponentSchema
+    {
+        if (! isset($this->components[$className])) {
+            $this->components[$className] = $this->extractor->extract($className);
+        }
+
+        return $this->components[$className];
+    }
+
     public function has(string $className): bool
     {
         return isset($this->components[$className]);
