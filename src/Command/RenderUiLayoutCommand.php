@@ -46,9 +46,18 @@ class RenderUiLayoutCommand implements CommandInterface
         $root = (new WidgetSerializer)->fromArray($rootData);
 
         // Bind to placeholders (paths for values, N blank rows per repeater).
+        // Best-effort: this is a preview with synthetic placeholder data, so a
+        // single binding whose placeholder type doesn't fit its typed property
+        // (e.g. a value-path string bound to Dropdown::$options, which is an
+        // array) must not abort the whole preview — the real runtime supplies a
+        // correctly-typed value. Swallow the mismatch and render what bound.
         $collectionPaths = [];
         $this->collectRepeaterPaths($root, $collectionPaths);
-        (new WidgetBinder)->bind($root, new PlaceholderWidgetContext($collectionPaths));
+        try {
+            (new WidgetBinder)->bind($root, new PlaceholderWidgetContext($collectionPaths));
+        } catch (\TypeError) {
+            // fall through with whatever bound before the mismatch
+        }
 
         // Real engine layout + draw, captured as vector primitives.
         $style = UIStyle::dark();
