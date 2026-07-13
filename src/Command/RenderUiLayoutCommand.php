@@ -39,7 +39,11 @@ class RenderUiLayoutCommand implements CommandInterface
         $height = $this->floatArg('height', 720.0);
 
         $data = $this->resolveTreeData($context);
-        $root = (new WidgetSerializer)->fromArray($data);
+        // resolveTreeData returns the file/document envelope ({_format, name,
+        // root}); the serializer wants the root widget node. Fall back to $data
+        // itself if it already looks like a bare widget node.
+        $rootData = is_array($data['root'] ?? null) ? $data['root'] : $data;
+        $root = (new WidgetSerializer)->fromArray($rootData);
 
         // Bind to placeholders (paths for values, N blank rows per repeater).
         $collectionPaths = [];
