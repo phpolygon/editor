@@ -93,6 +93,24 @@ class EditorServiceProvider extends ServiceProvider
             // command require_once's a scene that extends a project base class.
             if ($projectDir) {
                 $app->make(ProjectAutoloader::class)->register($projectDir, $manifest->psr4Roots);
+
+                // Populate the component registry on every request, not only on
+                // open. Web mode rebuilds the container per request, so without
+                // this the inspector's get_component_schema / a freshly loaded
+                // scene would see an empty registry and render nothing editable.
+                // (NativePHP keeps one long-lived process, so its registry would
+                // already persist — this simply makes web mode behave the same.)
+                $registry = $app->make(ComponentRegistry::class);
+                foreach ($manifest->psr4Roots as $namespace => $path) {
+                    $fullPath = $projectDir.DIRECTORY_SEPARATOR.$path;
+                    if (is_dir($fullPath)) {
+                        $registry->scan($fullPath, $namespace);
+                    }
+                }
+                $engineComponents = base_path('vendor/phpolygon/phpolygon/src/Component');
+                if (is_dir($engineComponents)) {
+                    $registry->scan($engineComponents, 'PHPolygon\\Component\\');
+                }
             }
 
             $ctx = new EditorContext(
