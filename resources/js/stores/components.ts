@@ -25,9 +25,11 @@ export const useComponentsStore = defineStore('components', () => {
         const cached = schemasCache.value.get(className);
         if (cached) return cached;
 
-        const res = await commands.getComponentSchema(className);
-        schemasCache.value.set(className, res.schema);
-        return res.schema;
+        // get_component_schema returns the schema object directly (flat), not
+        // wrapped in { schema: ... }.
+        const schema = await commands.getComponentSchema(className);
+        schemasCache.value.set(className, schema);
+        return schema;
     }
 
     return {

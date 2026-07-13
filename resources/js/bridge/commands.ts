@@ -1,7 +1,6 @@
 import { post } from './api';
 import type {
     ComponentListResponse,
-    SchemaResponse,
     SceneData,
     HierarchyResponse,
     ComponentSchemaDTO,
@@ -19,8 +18,8 @@ export function listComponents(grouped = true): Promise<ComponentListResponse> {
     return cmd<ComponentListResponse>('list_components', { grouped });
 }
 
-export function getComponentSchema(className: string): Promise<SchemaResponse> {
-    return cmd<SchemaResponse>('get_component_schema', { className });
+export function getComponentSchema(className: string): Promise<ComponentSchemaDTO> {
+    return cmd<ComponentSchemaDTO>('get_component_schema', { className });
 }
 
 export function loadScene(sceneName: string): Promise<SceneData> {

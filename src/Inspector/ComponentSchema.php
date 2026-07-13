@@ -7,7 +7,7 @@ namespace PHPolygon\Editor\Inspector;
 class ComponentSchema
 {
     /**
-     * @param list<PropertySchema> $properties
+     * @param  list<PropertySchema>  $properties
      */
     public function __construct(
         public readonly string $className,
@@ -20,10 +20,10 @@ class ComponentSchema
     public function toArray(): array
     {
         return [
-            'class' => $this->className,
+            'className' => $this->className,
             'shortName' => $this->shortName,
             'category' => $this->category,
-            'properties' => array_map(fn(PropertySchema $p) => $p->toArray(), $this->properties),
+            'properties' => array_map(fn (PropertySchema $p) => $p->toArray(), $this->properties),
         ];
     }
 }

@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace PHPolygon\Editor\Tests\Inspector;
 
-use PHPUnit\Framework\TestCase;
 use PHPolygon\Component\AudioSource;
-use PHPolygon\Component\BoxCollider2D;
-use PHPolygon\Component\Camera2DComponent;
 use PHPolygon\Component\RigidBody2D;
 use PHPolygon\Component\SpriteRenderer;
 use PHPolygon\Component\Transform2D;
 use PHPolygon\Editor\Inspector\InspectorMetadataExtractor;
+use PHPolygon\Editor\Inspector\PropertySchema;
+use PHPUnit\Framework\TestCase;
 
 class InspectorMetadataExtractorTest extends TestCase
 {
@@ -19,10 +18,10 @@ class InspectorMetadataExtractorTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->extractor = new InspectorMetadataExtractor();
+        $this->extractor = new InspectorMetadataExtractor;
     }
 
-    public function testExtractTransform2D(): void
+    public function test_extract_transform2_d(): void
     {
         $schema = $this->extractor->extract(Transform2D::class);
 
@@ -32,14 +31,14 @@ class InspectorMetadataExtractorTest extends TestCase
 
         // Should have position, rotation, scale, parentEntityId, childEntityIds
         // (worldMatrix is #[Hidden], so excluded)
-        $names = array_map(fn($p) => $p->name, $schema->properties);
+        $names = array_map(fn ($p) => $p->name, $schema->properties);
         $this->assertContains('position', $names);
         $this->assertContains('rotation', $names);
         $this->assertContains('scale', $names);
         $this->assertNotContains('worldMatrix', $names);
     }
 
-    public function testExtractPropertyEditorHint(): void
+    public function test_extract_property_editor_hint(): void
     {
         $schema = $this->extractor->extract(Transform2D::class);
         $position = $this->findProperty($schema->properties, 'position');
@@ -48,7 +47,7 @@ class InspectorMetadataExtractorTest extends TestCase
         $this->assertSame('vec2', $position->editorHint);
     }
 
-    public function testExtractPropertyRange(): void
+    public function test_extract_property_range(): void
     {
         $schema = $this->extractor->extract(Transform2D::class);
         $rotation = $this->findProperty($schema->properties, 'rotation');
@@ -59,25 +58,25 @@ class InspectorMetadataExtractorTest extends TestCase
         $this->assertEqualsWithDelta(360.0, $rotation->range['max'], 0.001);
     }
 
-    public function testExtractRigidBody2DCategory(): void
+    public function test_extract_rigid_body2_d_category(): void
     {
         $schema = $this->extractor->extract(RigidBody2D::class);
         $this->assertSame('Physics', $schema->category);
     }
 
-    public function testExtractSpriteRendererCategory(): void
+    public function test_extract_sprite_renderer_category(): void
     {
         $schema = $this->extractor->extract(SpriteRenderer::class);
         $this->assertSame('Rendering', $schema->category);
     }
 
-    public function testExtractAudioSourceCategory(): void
+    public function test_extract_audio_source_category(): void
     {
         $schema = $this->extractor->extract(AudioSource::class);
         $this->assertSame('Audio', $schema->category);
     }
 
-    public function testExtractPropertyTypes(): void
+    public function test_extract_property_types(): void
     {
         $schema = $this->extractor->extract(RigidBody2D::class);
 
@@ -88,19 +87,19 @@ class InspectorMetadataExtractorTest extends TestCase
         $this->assertSame('bool', $isKinematic->type);
     }
 
-    public function testToArray(): void
+    public function test_to_array(): void
     {
         $schema = $this->extractor->extract(Transform2D::class);
         $array = $schema->toArray();
 
-        $this->assertSame(Transform2D::class, $array['class']);
+        $this->assertSame(Transform2D::class, $array['className']);
         $this->assertSame('Transform2D', $array['shortName']);
         $this->assertSame('Core', $array['category']);
         $this->assertIsArray($array['properties']);
         $this->assertGreaterThan(0, count($array['properties']));
     }
 
-    public function testCaching(): void
+    public function test_caching(): void
     {
         $schema1 = $this->extractor->extract(Transform2D::class);
         $schema2 = $this->extractor->extract(Transform2D::class);
@@ -108,15 +107,16 @@ class InspectorMetadataExtractorTest extends TestCase
     }
 
     /**
-     * @param list<\PHPolygon\Editor\Inspector\PropertySchema> $properties
+     * @param  list<PropertySchema>  $properties
      */
-    private function findProperty(array $properties, string $name): ?\PHPolygon\Editor\Inspector\PropertySchema
+    private function findProperty(array $properties, string $name): ?PropertySchema
     {
         foreach ($properties as $prop) {
             if ($prop->name === $name) {
                 return $prop;
             }
         }
+
         return null;
     }
 }
