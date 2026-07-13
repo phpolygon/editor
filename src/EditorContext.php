@@ -7,11 +7,36 @@ namespace PHPolygon\Editor;
 use PHPolygon\Editor\Project\ProjectManifest;
 use PHPolygon\Editor\Registry\ComponentRegistry;
 use PHPolygon\Editor\Registry\SystemRegistry;
+use PHPolygon\Editor\Support\Path;
+use PHPolygon\Editor\UI\WidgetDocument;
 use PHPolygon\Scene\Transpiler\SceneTranspiler;
+use PHPolygon\UI\PanelLayout;
 
 class EditorContext
 {
     public ?SceneDocument $activeDocument = null;
+
+    public ?WidgetDocument $activeWidgetDocument = null;
+
+    public ?PanelLayout $activePanelLayout = null;
+
+    /** @var (callable(?array<string, mixed>): void)|null */
+    public $persistPanelLayoutArray = null;
+
+    /** @var (callable(): ?array<string, mixed>)|null */
+    public $loadPanelLayoutArray = null;
+
+    /**
+     * Session persistence hooks for the active UI layout, mirroring the scene
+     * document hooks. Web-mode requests rebuild the context per request, so
+     * the edited widget tree would otherwise be lost between commands.
+     *
+     * @var (callable(?array<string, mixed>): void)|null
+     */
+    public $persistWidgetArray = null;
+
+    /** @var (callable(): ?array<string, mixed>)|null */
+    public $loadWidgetArray = null;
 
     /**
      * Optional persistence hook. Web-mode requests rebuild the editor
@@ -31,22 +56,100 @@ class EditorContext
      */
     public $loadDocumentArray = null;
 
+    /** Absolute project root, normalized to the OS directory separator. */
+    public readonly string $projectDir;
+
     public function __construct(
         public readonly ProjectManifest $manifest,
         public readonly ComponentRegistry $components,
         public readonly SystemRegistry $systems,
         public readonly SceneTranspiler $transpiler,
-        public readonly string $projectDir,
-    ) {}
+        string $projectDir,
+    ) {
+        $this->projectDir = Path::normalize($projectDir);
+    }
 
     public function getScenesDir(): string
     {
-        return $this->projectDir . DIRECTORY_SEPARATOR . $this->manifest->scenesPath;
+        return Path::join($this->projectDir, $this->manifest->scenesPath);
     }
 
     public function getAssetsDir(): string
     {
-        return $this->projectDir . DIRECTORY_SEPARATOR . $this->manifest->assetsPath;
+        return Path::join($this->projectDir, $this->manifest->assetsPath);
+    }
+
+    public function getUiDir(): string
+    {
+        return Path::join($this->projectDir, $this->manifest->uiPath);
+    }
+
+    /**
+     * Lazy-restore the active UI layout from the persistence hook. Ids in the
+     * restored tree are preserved so the frontend's widget references stay
+     * valid across requests.
+     */
+    public function getActiveWidgetDocument(): ?WidgetDocument
+    {
+        if ($this->activeWidgetDocument === null && $this->loadWidgetArray !== null) {
+            $loader = $this->loadWidgetArray;
+            $data = $loader();
+            if (is_array($data) && is_array($data['root'] ?? null)) {
+                $name = is_string($data['name'] ?? null) ? $data['name'] : 'untitled';
+                $this->activeWidgetDocument = new WidgetDocument($name, $data['root']);
+            }
+        }
+
+        return $this->activeWidgetDocument;
+    }
+
+    public function persistActiveWidgetDocument(): void
+    {
+        if ($this->persistWidgetArray === null) {
+            return;
+        }
+        $persist = $this->persistWidgetArray;
+        $persist($this->activeWidgetDocument?->toArray());
+    }
+
+    public function setActiveWidgetDocument(?WidgetDocument $document): void
+    {
+        $this->activeWidgetDocument = $document;
+        $this->persistActiveWidgetDocument();
+    }
+
+    /** Directory of data-driven panel layouts (`*.layout.json`), per manifest. */
+    public function getPanelLayoutsDir(): string
+    {
+        return Path::join($this->projectDir, $this->manifest->panelLayoutsPath);
+    }
+
+    public function getActivePanelLayout(): ?PanelLayout
+    {
+        if ($this->activePanelLayout === null && $this->loadPanelLayoutArray !== null) {
+            $loader = $this->loadPanelLayoutArray;
+            $data = $loader();
+            if (is_array($data)) {
+                $this->activePanelLayout = PanelLayout::fromArray($data);
+            }
+        }
+
+        return $this->activePanelLayout;
+    }
+
+    public function persistActivePanelLayout(): void
+    {
+        if ($this->persistPanelLayoutArray === null) {
+            return;
+        }
+        $persist = $this->persistPanelLayoutArray;
+        $persist($this->activePanelLayout?->toArray());
+    }
+
+    public function setActivePanelLayout(?PanelLayout $layout): void
+    {
+        $this->activePanelLayout = $layout;
+        $this->persistActivePanelLayout();
     }
 
     /**
@@ -62,6 +165,7 @@ class EditorContext
                 $this->activeDocument = new SceneDocument($data);
             }
         }
+
         return $this->activeDocument;
     }
 

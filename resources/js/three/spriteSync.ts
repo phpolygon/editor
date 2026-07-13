@@ -4,6 +4,7 @@ import type { ComponentData, EntityNode } from '@/types';
 
 const textureLoader = new THREE.TextureLoader();
 const textureCache = new Map<string, THREE.Texture>();
+const textureFailed = new Set<string>();
 const sharedGeometry = new THREE.PlaneGeometry(1, 1);
 
 function findComponent(entity: EntityNode, suffix: string): ComponentData | undefined {
@@ -18,14 +19,47 @@ function readVec2(value: unknown, fallback: [number, number] = [0, 0]): [number,
     return fallback;
 }
 
-function loadTexture(path: string): THREE.Texture {
+/**
+ * Assign a sprite texture to a material, resolving the id as an asset file.
+ * When the id does not resolve to a file — e.g. it is an engine texture-registry
+ * id like 'desk' rather than a path — the load fails and we fall back to the
+ * sprite's flat color instead of leaving a broken (black) texture on the quad.
+ */
+function applyTexture(material: THREE.MeshBasicMaterial, path: string): void {
+    if (textureFailed.has(path)) {
+        clearTexture(material);
+        return;
+    }
     const cached = textureCache.get(path);
-    if (cached) return cached;
-    const tex = textureLoader.load(assetFileUrl(path));
+    if (cached) {
+        material.map = cached;
+        material.needsUpdate = true;
+        return;
+    }
+    const tex = textureLoader.load(
+        assetFileUrl(path),
+        (loaded) => {
+            textureCache.set(path, loaded); // cache for reuse once it resolves
+        },
+        undefined,
+        () => {
+            // Unresolved id (e.g. an engine texture-registry id, not a file):
+            // drop the broken texture so the sprite shows its flat color.
+            textureFailed.add(path);
+            if (material.map === tex) clearTexture(material);
+        },
+    );
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.magFilter = THREE.NearestFilter;
-    textureCache.set(path, tex);
-    return tex;
+    material.map = tex;
+    material.needsUpdate = true;
+}
+
+function clearTexture(material: THREE.MeshBasicMaterial): void {
+    if (material.map) {
+        material.map = null;
+        material.needsUpdate = true;
+    }
 }
 
 export interface SyncedSprite {
@@ -146,11 +180,9 @@ export class SpriteSync {
 
         const textureId = typeof sprite.properties.textureId === 'string' ? sprite.properties.textureId : '';
         if (textureId) {
-            synced.mesh.material.map = loadTexture(textureId);
-            synced.mesh.material.needsUpdate = true;
-        } else if (synced.mesh.material.map) {
-            synced.mesh.material.map = null;
-            synced.mesh.material.needsUpdate = true;
+            applyTexture(synced.mesh.material, textureId);
+        } else {
+            clearTexture(synced.mesh.material);
         }
     }
 }

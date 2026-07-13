@@ -18,8 +18,9 @@ class ListComponentsCommand implements CommandInterface
         if ($grouped) {
             $result = [];
             foreach ($context->components->getByCategory() as $cat => $schemas) {
-                $result[$cat] = array_map(fn($s) => $s->toArray(), $schemas);
+                $result[$cat] = array_map(fn ($s) => $s->toArray(), $schemas);
             }
+
             return ['categories' => $result];
         }
 

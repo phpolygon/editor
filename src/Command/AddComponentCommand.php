@@ -16,7 +16,7 @@ class AddComponentCommand implements CommandInterface
     {
         $doc = $context->getActiveDocument();
         if ($doc === null) {
-            throw new RuntimeException("No active scene document");
+            throw new RuntimeException('No active scene document');
         }
 
         $entityName = is_string($this->args['entity'] ?? null) ? $this->args['entity'] : null;

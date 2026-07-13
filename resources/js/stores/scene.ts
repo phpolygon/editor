@@ -2,8 +2,45 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { EntityNode } from '@/types';
 import * as commands from '@/bridge/commands';
+import { useProjectStore } from '@/stores/project';
 
 export type SceneMode = '2d' | '3d';
+
+// Component class-name fragments that betray a scene's dimensionality. Used
+// only as a fallback when the user has no saved per-scene preference.
+const THREE_D_HINTS = ['Transform3D', 'MeshRenderer', 'Camera3D', 'DirectionalLight', 'PointLight', 'CharacterController3D'];
+const TWO_D_HINTS = ['Transform2D', 'SpriteRenderer', 'Camera2D', 'Collider2D', 'RigidBody2D'];
+
+function shortName(componentClass: string): string {
+    const parts = componentClass.split('\\');
+    return parts[parts.length - 1] ?? componentClass;
+}
+
+/**
+ * Guess a scene's mode from the components its entities use. Returns null when
+ * the scene has no dimensional signal (e.g. a UI-only scene with no entities),
+ * leaving the decision to the project default.
+ */
+function inferMode(nodes: EntityNode[]): SceneMode | null {
+    let has3d = false;
+    let has2d = false;
+
+    const walk = (list: EntityNode[]) => {
+        for (const node of list) {
+            for (const comp of node.components) {
+                const name = shortName(comp._class);
+                if (THREE_D_HINTS.some((h) => name.includes(h))) has3d = true;
+                if (TWO_D_HINTS.some((h) => name.includes(h))) has2d = true;
+            }
+            walk(node.children);
+        }
+    };
+    walk(nodes);
+
+    if (has3d && !has2d) return '3d';
+    if (has2d && !has3d) return '2d';
+    return null;
+}
 
 // Backend omits empty children arrays from serialised scenes; normalise once
 // at the boundary so every consumer (hierarchy panel, Three.js sync) can rely
@@ -21,10 +58,22 @@ function modeStorageKey(sceneName: string): string {
     return `phpolygon-editor:scene-mode:${sceneName}`;
 }
 
-function loadStoredMode(sceneName: string): SceneMode {
-    if (!sceneName) return '3d';
+function storedMode(sceneName: string): SceneMode | null {
+    if (!sceneName) return null;
     const stored = localStorage.getItem(modeStorageKey(sceneName));
-    return stored === '2d' || stored === '3d' ? stored : '3d';
+    return stored === '2d' || stored === '3d' ? stored : null;
+}
+
+/**
+ * Decide which viewport mode a freshly loaded scene opens in:
+ *   1. an explicit per-scene preference the user previously toggled, else
+ *   2. the mode inferred from the scene's own components, else
+ *   3. the project's declared default (a 2D game opens in 2D).
+ */
+function resolveMode(sceneName: string, nodes: EntityNode[]): SceneMode {
+    return storedMode(sceneName)
+        ?? inferMode(nodes)
+        ?? useProjectStore().defaultMode;
 }
 
 export const useSceneStore = defineStore('scene', () => {
@@ -71,8 +120,22 @@ export const useSceneStore = defineStore('scene', () => {
             const data = await commands.loadScene(sceneName);
             name.value = data.name;
             entities.value = normaliseEntities(data.entities);
-            mode.value = loadStoredMode(data.name);
+            mode.value = resolveMode(data.name, entities.value);
             dirty.value = false;
+        } finally {
+            loading.value = false;
+        }
+    }
+
+    async function createScene(sceneName: string) {
+        loading.value = true;
+        try {
+            const data = await commands.createScene(sceneName);
+            name.value = data.name;
+            entities.value = normaliseEntities(data.entities);
+            mode.value = resolveMode(data.name, entities.value);
+            dirty.value = false;
+            await fetchSceneList();
         } finally {
             loading.value = false;
         }
@@ -106,6 +169,13 @@ export const useSceneStore = defineStore('scene', () => {
         parent: string | null = null,
     ): Promise<string> {
         const result = await commands.createPrimitive(type, parent);
+        await refreshHierarchy();
+        dirty.value = true;
+        return result.created;
+    }
+
+    async function createSprite(parent: string | null = null): Promise<string> {
+        const result = await commands.createSprite(parent);
         await refreshHierarchy();
         dirty.value = true;
         return result.created;
@@ -191,11 +261,13 @@ export const useSceneStore = defineStore('scene', () => {
         findEntity,
         fetchSceneList,
         load,
+        createScene,
         save,
         setMode,
         refreshHierarchy,
         createEntity,
         createPrimitive,
+        createSprite,
         savePrefab,
         spawnPrefab,
         deleteEntity,

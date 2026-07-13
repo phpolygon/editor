@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\SceneDocument;
 use PHPolygon\Geometry\BoxMesh;
 use PHPolygon\Geometry\CylinderMesh;
 use PHPolygon\Geometry\MeshData;
@@ -21,10 +22,10 @@ class CreatePrimitiveCommand implements CommandInterface
     private const DEFAULT_MATERIAL_ID = 'editor_default_material';
 
     private const PRIMITIVES = [
-        'box'      => 'editor_primitive_box',
-        'sphere'   => 'editor_primitive_sphere',
+        'box' => 'editor_primitive_box',
+        'sphere' => 'editor_primitive_sphere',
         'cylinder' => 'editor_primitive_cylinder',
-        'plane'    => 'editor_primitive_plane',
+        'plane' => 'editor_primitive_plane',
     ];
 
     /** @param array<string, mixed> $args */
@@ -38,7 +39,7 @@ class CreatePrimitiveCommand implements CommandInterface
         }
 
         $type = is_string($this->args['type'] ?? null) ? $this->args['type'] : '';
-        if (!isset(self::PRIMITIVES[$type])) {
+        if (! isset(self::PRIMITIVES[$type])) {
             throw new RuntimeException("Unknown primitive type: {$type}");
         }
 
@@ -58,20 +59,20 @@ class CreatePrimitiveCommand implements CommandInterface
         $doc->addComponent($name, 'PHPolygon\\Component\\Transform3D', [
             'position' => ['x' => 0.0, 'y' => 0.0, 'z' => 0.0],
             'rotation' => ['x' => 0.0, 'y' => 0.0, 'z' => 0.0, 'w' => 1.0],
-            'scale'    => ['x' => 1.0, 'y' => 1.0, 'z' => 1.0],
+            'scale' => ['x' => 1.0, 'y' => 1.0, 'z' => 1.0],
         ]);
 
         $doc->addComponent($name, 'PHPolygon\\Component\\MeshRenderer', [
-            'meshId'      => $meshId,
-            'materialId'  => self::DEFAULT_MATERIAL_ID,
+            'meshId' => $meshId,
+            'materialId' => self::DEFAULT_MATERIAL_ID,
             'castShadows' => true,
-            'visible'     => true,
+            'visible' => true,
         ]);
 
         return [
-            'created'    => $name,
-            'parent'     => $parent,
-            'meshId'     => $meshId,
+            'created' => $name,
+            'parent' => $parent,
+            'meshId' => $meshId,
             'materialId' => self::DEFAULT_MATERIAL_ID,
         ];
     }
@@ -87,11 +88,11 @@ class CreatePrimitiveCommand implements CommandInterface
     private function generatePrimitive(string $type): MeshData
     {
         return match ($type) {
-            'box'      => BoxMesh::generate(1.0, 1.0, 1.0),
-            'sphere'   => SphereMesh::generate(0.5, 12, 16),
+            'box' => BoxMesh::generate(1.0, 1.0, 1.0),
+            'sphere' => SphereMesh::generate(0.5, 12, 16),
             'cylinder' => CylinderMesh::generate(0.5, 1.0, 16),
-            'plane'    => PlaneMesh::generate(1.0, 1.0),
-            default    => throw new RuntimeException("Unknown primitive type: {$type}"),
+            'plane' => PlaneMesh::generate(1.0, 1.0),
+            default => throw new RuntimeException("Unknown primitive type: {$type}"),
         };
     }
 
@@ -107,15 +108,16 @@ class CreatePrimitiveCommand implements CommandInterface
         ));
     }
 
-    private function uniqueName(\PHPolygon\Editor\SceneDocument $doc, string $base): string
+    private function uniqueName(SceneDocument $doc, string $base): string
     {
         if ($doc->getEntity($base) === null) {
             return $base;
         }
         $i = 2;
-        while ($doc->getEntity($base . '_' . $i) !== null) {
+        while ($doc->getEntity($base.'_'.$i) !== null) {
             $i++;
         }
-        return $base . '_' . $i;
+
+        return $base.'_'.$i;
     }
 }

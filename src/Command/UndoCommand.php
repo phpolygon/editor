@@ -17,7 +17,7 @@ class UndoCommand implements CommandInterface
     {
         $doc = $context->getActiveDocument();
         if ($doc === null) {
-            throw new RuntimeException("No active scene document");
+            throw new RuntimeException('No active scene document');
         }
 
         $doc->undo();

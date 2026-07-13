@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Registry;
 
 use PHPolygon\ECS\SystemInterface;
+use PHPolygon\Editor\Support\Path;
 use ReflectionClass;
-use RuntimeException;
 use SplFileInfo;
 
 class SystemRegistry
@@ -15,7 +15,7 @@ class SystemRegistry
     private array $systems = [];
 
     /**
-     * @param class-string<SystemInterface> $className
+     * @param  class-string<SystemInterface>  $className
      */
     public function register(string $className): void
     {
@@ -31,7 +31,8 @@ class SystemRegistry
      */
     public function scan(string $directory, string $namespace): void
     {
-        if (!is_dir($directory)) {
+        $directory = Path::normalize($directory);
+        if (! is_dir($directory)) {
             return;
         }
 
@@ -45,15 +46,17 @@ class SystemRegistry
                 continue;
             }
 
-            $pathname = $file->getPathname();
-            $relativePath = str_replace($directory . DIRECTORY_SEPARATOR, '', $pathname);
-            $className = $namespace . str_replace(
+            // Normalize so the prefix strip works regardless of whether the
+            // iterator reports '/' or '\' separators (mixed on Windows).
+            $pathname = Path::normalize($file->getPathname());
+            $relativePath = str_replace($directory.DIRECTORY_SEPARATOR, '', $pathname);
+            $className = $namespace.str_replace(
                 [DIRECTORY_SEPARATOR, '.php'],
                 ['\\', ''],
                 $relativePath
             );
 
-            if (!class_exists($className)) {
+            if (! class_exists($className)) {
                 continue;
             }
 
@@ -62,7 +65,7 @@ class SystemRegistry
                 continue;
             }
 
-            if (!$ref->implementsInterface(SystemInterface::class)) {
+            if (! $ref->implementsInterface(SystemInterface::class)) {
                 continue;
             }
 

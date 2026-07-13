@@ -16,10 +16,10 @@ class DeleteEntityCommand implements CommandInterface
     {
         $doc = $context->getActiveDocument();
         if ($doc === null) {
-            throw new RuntimeException("No active scene document");
+            throw new RuntimeException('No active scene document');
         }
 
-        if (!isset($this->args['name'])) {
+        if (! isset($this->args['name'])) {
             throw new RuntimeException("Missing 'name' argument");
         }
         $name = is_string($this->args['name']) ? $this->args['name'] : '';

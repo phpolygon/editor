@@ -5,6 +5,12 @@ import HierarchyPanel from '@/components/hierarchy/HierarchyPanel.vue';
 import InspectorPanel from '@/components/inspector/InspectorPanel.vue';
 import SceneViewPanel from '@/components/scene/SceneViewPanel.vue';
 import AssetBrowserPanel from '@/components/assets/AssetBrowserPanel.vue';
+import UiHierarchyPanel from '@/components/ui/UiHierarchyPanel.vue';
+import UiInspectorPanel from '@/components/ui/UiInspectorPanel.vue';
+import UiViewportPanel from '@/components/ui/UiViewportPanel.vue';
+import PanelElementList from '@/components/panel/PanelElementList.vue';
+import PanelInspector from '@/components/panel/PanelInspector.vue';
+import PanelLayoutCanvas from '@/components/panel/PanelLayoutCanvas.vue';
 import ToastContainer from '@/components/ui/ToastContainer.vue';
 import ContextMenu from '@/components/ui/ContextMenu.vue';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
@@ -12,10 +18,12 @@ import { useToast } from '@/composables/useToast';
 import { useSceneStore } from '@/stores/scene';
 import { useSelectionStore } from '@/stores/selection';
 import { useProjectStore } from '@/stores/project';
+import { useEditorStore } from '@/stores/editor';
 
 const sceneStore = useSceneStore();
 const selectionStore = useSelectionStore();
 const projectStore = useProjectStore();
+const editorStore = useEditorStore();
 const { addToast } = useToast();
 
 // F2 rename trigger: hierarchy nodes watch this ref
@@ -57,6 +65,7 @@ onMounted(async () => {
     window.addEventListener('beforeunload', onBeforeUnload);
     try {
         await projectStore.fetchProject();
+        projectStore.fetchRecent().catch(() => {});
         if (projectStore.opened) {
             await sceneStore.fetchSceneList();
             if (projectStore.entryScene) {
@@ -79,17 +88,23 @@ onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
         <div class="flex-1 grid grid-cols-[250px_1fr_300px] grid-rows-[1fr_200px] min-h-0">
             <!-- Hierarchy (left, spans both rows) -->
             <div class="row-span-2 border-r border-editor-border overflow-hidden">
-                <HierarchyPanel />
+                <PanelElementList v-if="editorStore.workspace === 'panel'" />
+                <UiHierarchyPanel v-else-if="editorStore.workspace === 'ui'" />
+                <HierarchyPanel v-else />
             </div>
 
-            <!-- Scene view (center top) -->
+            <!-- Viewport (center top) -->
             <div class="border-b border-editor-border overflow-hidden">
-                <SceneViewPanel />
+                <PanelLayoutCanvas v-if="editorStore.workspace === 'panel'" />
+                <UiViewportPanel v-else-if="editorStore.workspace === 'ui'" />
+                <SceneViewPanel v-else />
             </div>
 
             <!-- Inspector (right, spans both rows) -->
             <div class="row-span-2 border-l border-editor-border overflow-hidden">
-                <InspectorPanel />
+                <PanelInspector v-if="editorStore.workspace === 'panel'" />
+                <UiInspectorPanel v-else-if="editorStore.workspace === 'ui'" />
+                <InspectorPanel v-else />
             </div>
 
             <!-- Asset browser (center bottom) -->

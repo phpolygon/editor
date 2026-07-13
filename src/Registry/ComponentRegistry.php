@@ -8,6 +8,7 @@ use PHPolygon\ECS\Attribute\Serializable;
 use PHPolygon\ECS\ComponentInterface;
 use PHPolygon\Editor\Inspector\ComponentSchema;
 use PHPolygon\Editor\Inspector\InspectorMetadataExtractor;
+use PHPolygon\Editor\Support\Path;
 use ReflectionClass;
 use RuntimeException;
 use SplFileInfo;
@@ -21,11 +22,11 @@ class ComponentRegistry
 
     public function __construct(?InspectorMetadataExtractor $extractor = null)
     {
-        $this->extractor = $extractor ?? new InspectorMetadataExtractor();
+        $this->extractor = $extractor ?? new InspectorMetadataExtractor;
     }
 
     /**
-     * @param class-string<ComponentInterface> $className
+     * @param  class-string<ComponentInterface>  $className
      */
     public function register(string $className): void
     {
@@ -35,12 +36,13 @@ class ComponentRegistry
     /**
      * Scan a directory for component classes.
      *
-     * @param string $directory Absolute path to scan
-     * @param string $namespace PSR-4 namespace prefix for this directory
+     * @param  string  $directory  Absolute path to scan
+     * @param  string  $namespace  PSR-4 namespace prefix for this directory
      */
     public function scan(string $directory, string $namespace): void
     {
-        if (!is_dir($directory)) {
+        $directory = Path::normalize($directory);
+        if (! is_dir($directory)) {
             return;
         }
 
@@ -54,15 +56,17 @@ class ComponentRegistry
                 continue;
             }
 
-            $pathname = $file->getPathname();
-            $relativePath = str_replace($directory . DIRECTORY_SEPARATOR, '', $pathname);
-            $className = $namespace . str_replace(
+            // Normalize so the prefix strip works regardless of whether the
+            // iterator reports '/' or '\' separators (mixed on Windows).
+            $pathname = Path::normalize($file->getPathname());
+            $relativePath = str_replace($directory.DIRECTORY_SEPARATOR, '', $pathname);
+            $className = $namespace.str_replace(
                 [DIRECTORY_SEPARATOR, '.php'],
                 ['\\', ''],
                 $relativePath
             );
 
-            if (!class_exists($className)) {
+            if (! class_exists($className)) {
                 continue;
             }
 
@@ -71,7 +75,7 @@ class ComponentRegistry
                 continue;
             }
 
-            if (!$ref->implementsInterface(ComponentInterface::class)) {
+            if (! $ref->implementsInterface(ComponentInterface::class)) {
                 continue;
             }
 
@@ -86,9 +90,10 @@ class ComponentRegistry
 
     public function get(string $className): ComponentSchema
     {
-        if (!isset($this->components[$className])) {
+        if (! isset($this->components[$className])) {
             throw new RuntimeException("Component '{$className}' not registered");
         }
+
         return $this->components[$className];
     }
 
@@ -112,6 +117,7 @@ class ComponentRegistry
             $categories[$cat][] = $schema;
         }
         ksort($categories);
+
         return $categories;
     }
 
@@ -122,6 +128,7 @@ class ComponentRegistry
         foreach ($this->components as $class => $schema) {
             $result[$class] = $schema->toArray();
         }
+
         return $result;
     }
 }

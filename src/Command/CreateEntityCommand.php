@@ -16,7 +16,7 @@ class CreateEntityCommand implements CommandInterface
     {
         $doc = $context->getActiveDocument();
         if ($doc === null) {
-            throw new RuntimeException("No active scene document");
+            throw new RuntimeException('No active scene document');
         }
 
         $name = is_string($this->args['name'] ?? null) ? $this->args['name'] : 'NewEntity';

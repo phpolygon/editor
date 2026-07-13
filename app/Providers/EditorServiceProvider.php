@@ -4,8 +4,14 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use PHPolygon\Editor\Command\AddComponentCommand;
+use PHPolygon\Editor\Command\AddLayoutElementCommand;
+use PHPolygon\Editor\Command\AddWidgetCommand;
 use PHPolygon\Editor\Command\CreateEntityCommand;
+use PHPolygon\Editor\Command\CreatePanelLayoutCommand;
 use PHPolygon\Editor\Command\CreatePrimitiveCommand;
+use PHPolygon\Editor\Command\CreateSceneCommand;
+use PHPolygon\Editor\Command\CreateSpriteCommand;
+use PHPolygon\Editor\Command\CreateUiLayoutCommand;
 use PHPolygon\Editor\Command\DeleteEntityCommand;
 use PHPolygon\Editor\Command\EditorCommandBus;
 use PHPolygon\Editor\Command\GetComponentSchemaCommand;
@@ -15,20 +21,39 @@ use PHPolygon\Editor\Command\GetMeshCommand;
 use PHPolygon\Editor\Command\ListComponentsCommand;
 use PHPolygon\Editor\Command\ListMaterialsCommand;
 use PHPolygon\Editor\Command\ListMeshesCommand;
+use PHPolygon\Editor\Command\ListPanelLayoutsCommand;
 use PHPolygon\Editor\Command\ListScenesCommand;
+use PHPolygon\Editor\Command\ListUiLayoutsCommand;
+use PHPolygon\Editor\Command\ListWidgetTypesCommand;
+use PHPolygon\Editor\Command\LoadPanelLayoutCommand;
 use PHPolygon\Editor\Command\LoadSceneCommand;
+use PHPolygon\Editor\Command\LoadUiLayoutCommand;
 use PHPolygon\Editor\Command\RedoCommand;
 use PHPolygon\Editor\Command\RemoveComponentCommand;
+use PHPolygon\Editor\Command\RemoveLayoutElementCommand;
+use PHPolygon\Editor\Command\RemoveWidgetCommand;
 use PHPolygon\Editor\Command\RenameEntityCommand;
+use PHPolygon\Editor\Command\RenameLayoutElementCommand;
+use PHPolygon\Editor\Command\RenderUiLayoutCommand;
 use PHPolygon\Editor\Command\ReparentEntityCommand;
+use PHPolygon\Editor\Command\ReparentWidgetCommand;
+use PHPolygon\Editor\Command\SavePanelLayoutCommand;
 use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SaveSceneCommand;
+use PHPolygon\Editor\Command\SaveUiLayoutCommand;
+use PHPolygon\Editor\Command\SetWidgetBindingCommand;
+use PHPolygon\Editor\Command\SetWidgetEventCommand;
 use PHPolygon\Editor\Command\SpawnPrefabCommand;
+use PHPolygon\Editor\Command\TranspileUiLayoutCommand;
 use PHPolygon\Editor\Command\UndoCommand;
+use PHPolygon\Editor\Command\UpdateLayoutElementCommand;
 use PHPolygon\Editor\Command\UpdatePropertyCommand;
+use PHPolygon\Editor\Command\UpdateWidgetPropertyCommand;
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Project\ProjectAutoloader;
 use PHPolygon\Editor\Project\ProjectLoader;
 use PHPolygon\Editor\Project\ProjectManifest;
+use PHPolygon\Editor\Project\RecentProjects;
 use PHPolygon\Editor\Registry\ComponentRegistry;
 use PHPolygon\Editor\Registry\SystemRegistry;
 use PHPolygon\Scene\Transpiler\SceneTranspiler;
@@ -41,6 +66,11 @@ class EditorServiceProvider extends ServiceProvider
         $this->app->singleton(SystemRegistry::class);
         $this->app->singleton(SceneTranspiler::class);
         $this->app->singleton(ProjectLoader::class);
+        $this->app->singleton(ProjectAutoloader::class);
+        $this->app->singleton(
+            RecentProjects::class,
+            fn () => new RecentProjects(storage_path('app/recent-projects.json')),
+        );
 
         $this->app->singleton(EditorContext::class, function ($app) {
             $projectDir = session('editor_project_dir', '');
@@ -54,8 +84,15 @@ class EditorServiceProvider extends ServiceProvider
                 entryScene: '',
             );
 
-            if ($projectDir && file_exists($projectDir . '/phpolygon.project.json')) {
+            if ($projectDir && file_exists($projectDir.'/phpolygon.project.json')) {
                 $manifest = $app->make(ProjectLoader::class)->load($projectDir);
+            }
+
+            // Make the project's own classes (scene base classes, components,
+            // systems) loadable in the editor process — required before any
+            // command require_once's a scene that extends a project base class.
+            if ($projectDir) {
+                $app->make(ProjectAutoloader::class)->register($projectDir, $manifest->psr4Roots);
             }
 
             $ctx = new EditorContext(
@@ -71,6 +108,7 @@ class EditorServiceProvider extends ServiceProvider
             // alive and would not need this).
             $ctx->loadDocumentArray = static function (): ?array {
                 $stored = session('editor_active_document');
+
                 return is_array($stored) ? $stored : null;
             };
             $ctx->persistDocumentArray = static function (?array $data): void {
@@ -78,6 +116,34 @@ class EditorServiceProvider extends ServiceProvider
                     session()->forget('editor_active_document');
                 } else {
                     session(['editor_active_document' => $data]);
+                }
+            };
+
+            // Same session-backed persistence for the active UI layout.
+            $ctx->loadWidgetArray = static function (): ?array {
+                $stored = session('editor_active_ui');
+
+                return is_array($stored) ? $stored : null;
+            };
+            $ctx->persistWidgetArray = static function (?array $data): void {
+                if ($data === null) {
+                    session()->forget('editor_active_ui');
+                } else {
+                    session(['editor_active_ui' => $data]);
+                }
+            };
+
+            // Same session-backed persistence for the active panel layout.
+            $ctx->loadPanelLayoutArray = static function (): ?array {
+                $stored = session('editor_active_panel_layout');
+
+                return is_array($stored) ? $stored : null;
+            };
+            $ctx->persistPanelLayoutArray = static function (?array $data): void {
+                if ($data === null) {
+                    session()->forget('editor_active_panel_layout');
+                } else {
+                    session(['editor_active_panel_layout' => $data]);
                 }
             };
 
@@ -92,6 +158,7 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('load_scene', LoadSceneCommand::class);
             $bus->register('save_scene', SaveSceneCommand::class);
             $bus->register('list_scenes', ListScenesCommand::class);
+            $bus->register('create_scene', CreateSceneCommand::class);
             $bus->register('create_entity', CreateEntityCommand::class);
             $bus->register('delete_entity', DeleteEntityCommand::class);
             $bus->register('add_component', AddComponentCommand::class);
@@ -107,8 +174,34 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('list_materials', ListMaterialsCommand::class);
             $bus->register('get_material', GetMaterialCommand::class);
             $bus->register('create_primitive', CreatePrimitiveCommand::class);
+            $bus->register('create_sprite', CreateSpriteCommand::class);
             $bus->register('save_prefab', SavePrefabCommand::class);
             $bus->register('spawn_prefab', SpawnPrefabCommand::class);
+
+            // UI layout (widget-tree) editing
+            $bus->register('list_ui_layouts', ListUiLayoutsCommand::class);
+            $bus->register('list_widget_types', ListWidgetTypesCommand::class);
+            $bus->register('create_ui_layout', CreateUiLayoutCommand::class);
+            $bus->register('load_ui_layout', LoadUiLayoutCommand::class);
+            $bus->register('save_ui_layout', SaveUiLayoutCommand::class);
+            $bus->register('add_widget', AddWidgetCommand::class);
+            $bus->register('remove_widget', RemoveWidgetCommand::class);
+            $bus->register('reparent_widget', ReparentWidgetCommand::class);
+            $bus->register('update_widget_property', UpdateWidgetPropertyCommand::class);
+            $bus->register('set_widget_binding', SetWidgetBindingCommand::class);
+            $bus->register('set_widget_event', SetWidgetEventCommand::class);
+            $bus->register('transpile_ui_layout', TranspileUiLayoutCommand::class);
+            $bus->register('render_ui_layout', RenderUiLayoutCommand::class);
+
+            // Data-driven panel layouts (immediate-mode UI)
+            $bus->register('list_panel_layouts', ListPanelLayoutsCommand::class);
+            $bus->register('create_panel_layout', CreatePanelLayoutCommand::class);
+            $bus->register('load_panel_layout', LoadPanelLayoutCommand::class);
+            $bus->register('save_panel_layout', SavePanelLayoutCommand::class);
+            $bus->register('add_layout_element', AddLayoutElementCommand::class);
+            $bus->register('update_layout_element', UpdateLayoutElementCommand::class);
+            $bus->register('rename_layout_element', RenameLayoutElementCommand::class);
+            $bus->register('remove_layout_element', RemoveLayoutElementCommand::class);
 
             return $bus;
         });

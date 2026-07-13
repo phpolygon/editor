@@ -40,13 +40,13 @@ class SavePrefabCommand implements CommandInterface
             throw new RuntimeException("Invalid prefab name: {$prefabName}");
         }
 
-        $prefabsDir = $context->getAssetsDir() . DIRECTORY_SEPARATOR . self::PREFABS_SUBDIR;
-        if (!is_dir($prefabsDir) && !mkdir($prefabsDir, 0o755, true) && !is_dir($prefabsDir)) {
+        $prefabsDir = $context->getAssetsDir().DIRECTORY_SEPARATOR.self::PREFABS_SUBDIR;
+        if (! is_dir($prefabsDir) && ! mkdir($prefabsDir, 0o755, true) && ! is_dir($prefabsDir)) {
             throw new RuntimeException("Failed to create prefabs directory: {$prefabsDir}");
         }
 
-        $filePath = $prefabsDir . DIRECTORY_SEPARATOR . $sanitized . '.prefab.json';
-        $relativePath = self::PREFABS_SUBDIR . '/' . $sanitized . '.prefab.json';
+        $filePath = $prefabsDir.DIRECTORY_SEPARATOR.$sanitized.'.prefab.json';
+        $relativePath = self::PREFABS_SUBDIR.'/'.$sanitized.'.prefab.json';
 
         $payload = [
             'name' => $sanitized,
@@ -62,9 +62,9 @@ class SavePrefabCommand implements CommandInterface
         }
 
         return [
-            'saved'        => true,
-            'name'         => $sanitized,
-            'path'         => $filePath,
+            'saved' => true,
+            'name' => $sanitized,
+            'path' => $filePath,
             'relativePath' => $relativePath,
         ];
     }
@@ -75,7 +75,7 @@ class SavePrefabCommand implements CommandInterface
     }
 
     /**
-     * @param array<string, mixed> $entity
+     * @param  array<string, mixed>  $entity
      * @return array<string, mixed>
      */
     private function stripTransientFields(array $entity): array
@@ -84,8 +84,9 @@ class SavePrefabCommand implements CommandInterface
         if (isset($entity['children']) && is_array($entity['children'])) {
             /** @var list<array<string, mixed>> $children */
             $children = $entity['children'];
-            $entity['children'] = array_map(fn(array $c) => $this->stripTransientFields($c), $children);
+            $entity['children'] = array_map(fn (array $c) => $this->stripTransientFields($c), $children);
         }
+
         return $entity;
     }
 }

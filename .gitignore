@@ -26,3 +26,7 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# local build log + PHP binary dir (never commit)
+build-native.log
+php-bin-vio/

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Rendering\Color;
 use PHPolygon\Rendering\MaterialRegistry;
 use RuntimeException;
 
@@ -44,7 +45,7 @@ class GetMaterialCommand implements CommandInterface
     }
 
     /** @return array{r: float, g: float, b: float, a: float} */
-    private function colorToArray(\PHPolygon\Rendering\Color $color): array
+    private function colorToArray(Color $color): array
     {
         return ['r' => $color->r, 'g' => $color->g, 'b' => $color->b, 'a' => $color->a];
     }

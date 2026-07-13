@@ -14,10 +14,12 @@ class GetComponentSchemaCommand implements CommandInterface
 
     public function execute(EditorContext $context): array
     {
-        if (!isset($this->args['class'])) {
-            throw new RuntimeException("Missing 'class' argument");
+        // The frontend bridge sends `className`; accept `class` too for callers
+        // using the shorter key.
+        $class = $this->args['className'] ?? $this->args['class'] ?? null;
+        if (! is_string($class) || $class === '') {
+            throw new RuntimeException("Missing 'className' argument");
         }
-        $class = is_string($this->args['class']) ? $this->args['class'] : '';
 
         return $context->components->get($class)->toArray();
     }

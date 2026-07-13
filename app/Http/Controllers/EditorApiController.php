@@ -5,11 +5,15 @@ namespace App\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Native\Desktop\Dialog;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use PHPolygon\Editor\Command\EditorCommandBus;
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Project\ProjectAutoloader;
+use PHPolygon\Editor\Project\ProjectImporter;
 use PHPolygon\Editor\Project\ProjectLoader;
+use PHPolygon\Editor\Project\RecentProjects;
 use PHPolygon\Editor\Registry\ComponentRegistry;
+use PHPolygon\Editor\Support\Path;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class EditorApiController extends Controller
 {
@@ -51,21 +55,35 @@ class EditorApiController extends Controller
         Request $request,
         ProjectLoader $loader,
         ComponentRegistry $registry,
+        RecentProjects $recent,
     ): JsonResponse {
         $request->validate(['dir' => 'required|string']);
 
         $dir = $request->input('dir');
 
-        if (!is_dir($dir)) {
+        if (! is_dir($dir)) {
+            // Drop a stale entry if the user opened it from the recent menu.
+            $recent->remove($dir);
+
             return response()->json(['ok' => false, 'error' => "Directory not found: {$dir}"], 422);
         }
 
-        return $this->loadProject($dir, $loader, $registry);
+        return $this->loadProject($dir, $loader, $registry, $recent);
+    }
+
+    /**
+     * Recently opened projects, most-recent first. Stale entries (manifest
+     * gone) are pruned before returning so the menu never offers dead paths.
+     */
+    public function recentProjects(RecentProjects $recent): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => ['recent' => $recent->prune()]]);
     }
 
     public function openProjectDialog(
         ProjectLoader $loader,
         ComponentRegistry $registry,
+        RecentProjects $recent,
     ): JsonResponse {
         try {
             $dir = Dialog::new()
@@ -85,11 +103,52 @@ class EditorApiController extends Controller
             ], 503);
         }
 
-        if (!$dir || !is_dir($dir)) {
+        if (! $dir || ! is_dir($dir)) {
             return response()->json(['ok' => false, 'error' => 'No directory selected'], 422);
         }
 
-        return $this->loadProject($dir, $loader, $registry);
+        return $this->loadProject($dir, $loader, $registry, $recent);
+    }
+
+    public function importProject(
+        Request $request,
+        ProjectImporter $importer,
+        ProjectLoader $loader,
+        ComponentRegistry $registry,
+        RecentProjects $recent,
+    ): JsonResponse {
+        $request->validate(['dir' => 'required|string']);
+
+        return $this->importAndLoad($request->input('dir'), $importer, $loader, $registry, $recent);
+    }
+
+    public function importProjectDialog(
+        ProjectImporter $importer,
+        ProjectLoader $loader,
+        ComponentRegistry $registry,
+        RecentProjects $recent,
+    ): JsonResponse {
+        try {
+            $dir = Dialog::new()
+                ->title('Import PHPolygon Project')
+                ->folders()
+                ->button('Import')
+                ->open();
+        } catch (\Throwable $e) {
+            // No Electron bridge (web-only `composer dev`): the frontend
+            // falls back to prompting for a path and POSTing to /project/import.
+            return response()->json([
+                'ok' => false,
+                'error' => 'Native dialog unavailable',
+                'fallback' => 'path-input',
+            ], 503);
+        }
+
+        if (! $dir || ! is_dir($dir)) {
+            return response()->json(['ok' => false, 'error' => 'No directory selected'], 422);
+        }
+
+        return $this->importAndLoad($dir, $importer, $loader, $registry, $recent);
     }
 
     public function browseAsset(EditorContext $context): JsonResponse
@@ -109,32 +168,36 @@ class EditorApiController extends Controller
             ], 503);
         }
 
-        if (!$path) {
+        if (! $path) {
             return response()->json(['ok' => false, 'error' => 'No file selected'], 422);
         }
 
-        $assetsDir = $context->getAssetsDir();
-        $relativePath = str_starts_with($path, $assetsDir)
+        $assetsDir = Path::normalize($context->getAssetsDir());
+        $path = Path::normalize($path);
+        $relativePath = str_starts_with($path, $assetsDir.DIRECTORY_SEPARATOR)
             ? ltrim(substr($path, strlen($assetsDir)), DIRECTORY_SEPARATOR)
             : basename($path);
 
-        return response()->json(['ok' => true, 'data' => ['path' => $relativePath]]);
+        // Store asset references with forward slashes so scenes stay portable.
+        return response()->json(['ok' => true, 'data' => ['path' => Path::toPortable($relativePath)]]);
     }
 
     public function assets(Request $request, EditorContext $context): JsonResponse
     {
         $subPath = $request->input('path', '');
         $assetsDir = $context->getAssetsDir();
-        $fullPath = $subPath ? $assetsDir . DIRECTORY_SEPARATOR . $subPath : $assetsDir;
+        $fullPath = $subPath ? $assetsDir.DIRECTORY_SEPARATOR.$subPath : $assetsDir;
 
-        if (!is_dir($fullPath)) {
+        if (! is_dir($fullPath)) {
             return response()->json(['ok' => true, 'data' => ['files' => [], 'path' => $subPath]]);
         }
 
         $files = [];
         $iterator = new \DirectoryIterator($fullPath);
         foreach ($iterator as $file) {
-            if ($file->isDot()) continue;
+            if ($file->isDot()) {
+                continue;
+            }
             $files[] = [
                 'name' => $file->getFilename(),
                 'isDir' => $file->isDir(),
@@ -143,14 +206,14 @@ class EditorApiController extends Controller
             ];
         }
 
-        usort($files, fn($a, $b) => ($b['isDir'] <=> $a['isDir']) ?: strcmp($a['name'], $b['name']));
+        usort($files, fn ($a, $b) => ($b['isDir'] <=> $a['isDir']) ?: strcmp($a['name'], $b['name']));
 
         return response()->json(['ok' => true, 'data' => ['files' => $files, 'path' => $subPath]]);
     }
 
     public function assetFile(Request $request, EditorContext $context): BinaryFileResponse|JsonResponse
     {
-        $relPath = (string)$request->input('path', '');
+        $relPath = (string) $request->input('path', '');
         if ($relPath === '') {
             return response()->json(['ok' => false, 'error' => 'Missing path'], 422);
         }
@@ -160,18 +223,53 @@ class EditorApiController extends Controller
             return response()->json(['ok' => false, 'error' => 'Assets directory not found'], 404);
         }
 
-        $candidate = realpath($assetsDir . DIRECTORY_SEPARATOR . $relPath);
-        if ($candidate === false || !is_file($candidate) || !str_starts_with($candidate, $assetsDir . DIRECTORY_SEPARATOR)) {
+        $candidate = realpath($assetsDir.DIRECTORY_SEPARATOR.$relPath);
+        if ($candidate === false || ! is_file($candidate) || ! str_starts_with($candidate, $assetsDir.DIRECTORY_SEPARATOR)) {
             return response()->json(['ok' => false, 'error' => 'File not found'], 404);
         }
 
         return response()->file($candidate);
     }
 
+    /**
+     * Generate the editor manifest for a folder that lacks one (or load the
+     * existing one), then open the project. The response carries a `created`
+     * flag so the UI can distinguish a fresh import from opening a project
+     * that was already initialized.
+     */
+    private function importAndLoad(
+        string $dir,
+        ProjectImporter $importer,
+        ProjectLoader $loader,
+        ComponentRegistry $registry,
+        RecentProjects $recent,
+    ): JsonResponse {
+        if (! is_dir($dir)) {
+            return response()->json(['ok' => false, 'error' => "Directory not found: {$dir}"], 422);
+        }
+
+        try {
+            $result = $importer->import($dir);
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+
+        $response = $this->loadProject($dir, $loader, $registry, $recent);
+
+        $payload = $response->getData(true);
+        if (($payload['ok'] ?? false) === true) {
+            $payload['data']['created'] = $result['created'];
+            $response->setData($payload);
+        }
+
+        return $response;
+    }
+
     private function loadProject(
         string $dir,
         ProjectLoader $loader,
         ComponentRegistry $registry,
+        RecentProjects $recent,
     ): JsonResponse {
         try {
             $manifest = $loader->load($dir);
@@ -182,16 +280,23 @@ class EditorApiController extends Controller
         // Store in session
         session(['editor_project_dir' => $dir]);
 
+        // Remember it for the "Recent Projects" menu (survives restarts).
+        $recent->add($dir, $manifest->name);
+
+        // Make the project's own classes loadable so component discovery below
+        // (and later scene loading) can resolve project-defined classes.
+        app(ProjectAutoloader::class)->register($dir, $manifest->psr4Roots);
+
         // Scan components from project's PSR-4 roots
         foreach ($manifest->psr4Roots as $namespace => $path) {
-            $fullPath = $dir . DIRECTORY_SEPARATOR . $path;
+            $fullPath = $dir.DIRECTORY_SEPARATOR.$path;
             if (is_dir($fullPath)) {
                 $registry->scan($fullPath, $namespace);
             }
         }
 
         // Also scan engine's built-in components
-        $engineComponentDir = dirname(__DIR__, 3) . '/vendor/phpolygon/phpolygon/src/Component';
+        $engineComponentDir = dirname(__DIR__, 3).'/vendor/phpolygon/phpolygon/src/Component';
         if (is_dir($engineComponentDir)) {
             $registry->scan($engineComponentDir, 'PHPolygon\\Component\\');
         }
@@ -205,6 +310,7 @@ class EditorApiController extends Controller
             'data' => [
                 'manifest' => $manifest->toArray(),
                 'components' => $registry->toArray(),
+                'projectDir' => $dir,
             ],
         ]);
     }

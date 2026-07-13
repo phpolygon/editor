@@ -7,7 +7,16 @@ namespace PHPolygon\Editor\Project;
 class ProjectManifest
 {
     /**
-     * @param array<string, string> $psr4Roots Namespace => relative path
+     * @param  array<string, string>  $psr4Roots  Namespace => relative path
+     * @param  '2d'|'3d'  $defaultMode  Editor viewport mode a scene opens in when
+     *                                  the user has no saved per-scene preference.
+     * @param  string  $liveWorldScene  Name of the scene whose entities come from
+     *                                  the running game's World rather than a
+     *                                  declarative build() (e.g. "GameScene").
+     * @param  string  $liveWorldCommand  Shell command the editor runs (cwd =
+     *                                    project dir) to regenerate that scene's
+     *                                    `*.scene.json` snapshot headlessly; the
+     *                                    output path is appended as one argument.
      */
     public function __construct(
         public readonly string $name,
@@ -17,6 +26,11 @@ class ProjectManifest
         public readonly string $assetsPath,
         public readonly array $psr4Roots,
         public readonly string $entryScene,
+        public readonly string $defaultMode = '3d',
+        public readonly string $uiPath = 'ui',
+        public readonly string $panelLayoutsPath = 'assets/ui',
+        public readonly string $liveWorldScene = '',
+        public readonly string $liveWorldCommand = '',
     ) {}
 
     /** @return array<string, mixed> */
@@ -31,6 +45,11 @@ class ProjectManifest
             'assetsPath' => $this->assetsPath,
             'psr4Roots' => $this->psr4Roots,
             'entryScene' => $this->entryScene,
+            'defaultMode' => $this->defaultMode,
+            'uiPath' => $this->uiPath,
+            'panelLayoutsPath' => $this->panelLayoutsPath,
+            'liveWorldScene' => $this->liveWorldScene,
+            'liveWorldCommand' => $this->liveWorldCommand,
         ];
     }
 }

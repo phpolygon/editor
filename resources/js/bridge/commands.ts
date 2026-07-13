@@ -35,6 +35,10 @@ export function listScenes(): Promise<{ scenes: string[] }> {
     return cmd<{ scenes: string[] }>('list_scenes');
 }
 
+export function createScene(name: string): Promise<SceneData> {
+    return cmd<SceneData>('create_scene', { name });
+}
+
 export function createEntity(
     name: string,
     parent: string | null = null,
@@ -120,6 +124,162 @@ export function assetFileUrl(relativePath: string): string {
     return `/api/editor/assets/file?path=${encodeURIComponent(relativePath)}`;
 }
 
+// ── UI layout (widget-tree) editing ──────────────────────────────
+
+export interface WidgetNode {
+    _id: string;
+    _widget: string;
+    children?: WidgetNode[];
+    [prop: string]: unknown;
+}
+
+export interface UiLayoutData {
+    name: string;
+    root: WidgetNode;
+}
+
+export type WidgetFieldKind =
+    | 'string'
+    | 'int'
+    | 'float'
+    | 'bool'
+    | 'color'
+    | 'edgeinsets'
+    | 'sizing'
+    | 'vec2'
+    | 'rect'
+    | 'other';
+
+export interface WidgetField {
+    name: string;
+    kind: WidgetFieldKind;
+    default: unknown;
+}
+
+export interface WidgetType {
+    type: string;
+    class: string;
+    container: boolean;
+    schema: WidgetField[];
+}
+
+export function listUiLayouts(): Promise<{ layouts: string[] }> {
+    return cmd('list_ui_layouts');
+}
+
+export function listWidgetTypes(): Promise<{ types: WidgetType[] }> {
+    return cmd('list_widget_types');
+}
+
+export function createUiLayout(name: string, rootType = 'VBox'): Promise<UiLayoutData> {
+    return cmd('create_ui_layout', { name, rootType });
+}
+
+export function loadUiLayout(name: string): Promise<UiLayoutData> {
+    return cmd('load_ui_layout', { name });
+}
+
+export function saveUiLayout(): Promise<{ saved: string; name: string }> {
+    return cmd('save_ui_layout');
+}
+
+export function addWidget(parentId: string, type: string): Promise<UiLayoutData & { added: string }> {
+    return cmd('add_widget', { parentId, type });
+}
+
+export function removeWidget(id: string): Promise<UiLayoutData> {
+    return cmd('remove_widget', { id });
+}
+
+export function reparentWidget(id: string, newParentId: string, index: number | null = null): Promise<UiLayoutData> {
+    return cmd('reparent_widget', { id, newParentId, index });
+}
+
+export function updateWidgetProperty(id: string, property: string, value: unknown): Promise<UiLayoutData> {
+    return cmd('update_widget_property', { id, property, value });
+}
+
+export function transpileUiLayout(): Promise<{ path: string; className: string; php: string }> {
+    return cmd('transpile_ui_layout');
+}
+
+/** Bind a widget property to a context path, or clear it with `path = null`. */
+export function setWidgetBinding(id: string, property: string, path: string | null): Promise<UiLayoutData> {
+    return cmd('set_widget_binding', { id, property, path });
+}
+
+/** Map a widget event to a context action, or remove it with `action = null`. */
+export function setWidgetEvent(id: string, event: string, action: string | null): Promise<UiLayoutData> {
+    return cmd('set_widget_event', { id, event, action });
+}
+
+/** One recorded draw call from the engine's real widget rendering. */
+export interface WidgetPrimitive {
+    op: string;
+    [key: string]: unknown;
+}
+
+export interface WidgetRenderResult {
+    width: number;
+    height: number;
+    primitives: WidgetPrimitive[];
+}
+
+/**
+ * Render the active widget tree to a flat draw list via the engine's real
+ * layout + draw, bound to placeholders (the WYSIWYG "unfilled panel" preview).
+ */
+export function renderUiLayout(width = 1280, height = 720): Promise<WidgetRenderResult> {
+    return cmd('render_ui_layout', { width, height });
+}
+
+// ── Data-driven panel layouts (immediate-mode UI) ────────────────
+
+export interface PanelElement {
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    [prop: string]: unknown;
+}
+
+export interface PanelLayoutData {
+    name: string;
+    elements: Record<string, PanelElement>;
+}
+
+export function listPanelLayouts(): Promise<{ layouts: string[] }> {
+    return cmd('list_panel_layouts');
+}
+
+export function createPanelLayout(name: string): Promise<PanelLayoutData> {
+    return cmd('create_panel_layout', { name });
+}
+
+export function loadPanelLayout(name: string): Promise<PanelLayoutData> {
+    return cmd('load_panel_layout', { name });
+}
+
+export function savePanelLayout(): Promise<{ saved: string; name: string }> {
+    return cmd('save_panel_layout');
+}
+
+export function addLayoutElement(id: string, rect?: { x: number; y: number; width: number; height: number }): Promise<PanelLayoutData & { added: string }> {
+    return cmd('add_layout_element', { id, ...(rect ?? {}) });
+}
+
+export function updateLayoutElement(id: string, props: Record<string, unknown>): Promise<PanelLayoutData> {
+    return cmd('update_layout_element', { id, props });
+}
+
+export function renameLayoutElement(oldId: string, newId: string): Promise<PanelLayoutData> {
+    return cmd('rename_layout_element', { oldId, newId });
+}
+
+export function removeLayoutElement(id: string): Promise<PanelLayoutData> {
+    return cmd('remove_layout_element', { id });
+}
+
 export type PrimitiveType = 'box' | 'sphere' | 'cylinder' | 'plane';
 
 export function createPrimitive(
@@ -128,6 +288,13 @@ export function createPrimitive(
     name: string | null = null,
 ): Promise<{ created: string; parent: string | null; meshId: string; materialId: string }> {
     return cmd('create_primitive', { type, parent, name });
+}
+
+export function createSprite(
+    parent: string | null = null,
+    name: string | null = null,
+): Promise<{ created: string; parent: string | null }> {
+    return cmd('create_sprite', { parent, name });
 }
 
 export function savePrefab(

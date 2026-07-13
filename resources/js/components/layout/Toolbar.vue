@@ -14,6 +14,37 @@ const selectionStore = useSelectionStore();
 const { addToast } = useToast();
 
 const createMenuOpen = ref(false);
+const recentMenuOpen = ref(false);
+
+// Delay closing dropdowns on blur so a click on a menu item registers first.
+// (setTimeout isn't available inside Vue template expressions.)
+function closeRecentSoon() {
+    window.setTimeout(() => (recentMenuOpen.value = false), 120);
+}
+function closeCreateSoon() {
+    window.setTimeout(() => (createMenuOpen.value = false), 120);
+}
+
+async function toggleRecentMenu() {
+    if (!recentMenuOpen.value) {
+        try {
+            await projectStore.fetchRecent();
+        } catch {
+            // Non-fatal — just show whatever is cached.
+        }
+    }
+    recentMenuOpen.value = !recentMenuOpen.value;
+}
+
+async function openRecent(dir: string, name: string) {
+    recentMenuOpen.value = false;
+    try {
+        await projectStore.openRecent(dir);
+        addToast(`Project "${projectStore.name}" opened`, 'success');
+    } catch (e: any) {
+        addToast(e?.message ?? `Failed to open "${name}"`, 'error');
+    }
+}
 
 async function addPrimitive(type: PrimitiveType) {
     createMenuOpen.value = false;
@@ -34,6 +65,17 @@ async function addEmpty() {
         addToast('Added empty entity', 'success');
     } catch (e: any) {
         addToast(e?.message ?? 'Failed to add entity', 'error');
+    }
+}
+
+async function addSprite() {
+    createMenuOpen.value = false;
+    try {
+        const name = await sceneStore.createSprite(selectionStore.selectedEntity ?? null);
+        selectionStore.selectEntity(name);
+        addToast('Added sprite', 'success');
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to add sprite', 'error');
     }
 }
 
@@ -66,6 +108,33 @@ async function openProject() {
         if (e?.message !== 'No directory selected') {
             addToast(e?.message ?? 'Failed to open project', 'error');
         }
+    }
+}
+
+async function importProject() {
+    try {
+        const { created } = await projectStore.importProjectWithDialog();
+        addToast(
+            created
+                ? `Project "${projectStore.name}" imported`
+                : `Project "${projectStore.name}" opened`,
+            'success',
+        );
+    } catch (e: any) {
+        if (e?.message !== 'No directory selected') {
+            addToast(e?.message ?? 'Failed to import project', 'error');
+        }
+    }
+}
+
+async function newScene() {
+    const name = window.prompt('New scene name (e.g. main_level):');
+    if (!name) return;
+    try {
+        await sceneStore.createScene(name);
+        addToast(`Scene "${sceneStore.name}" created`, 'success');
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to create scene', 'error');
     }
 }
 
@@ -115,6 +184,75 @@ async function switchScene(e: Event) {
             Open Project
         </button>
 
+        <!-- Import Project -->
+        <button
+            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active"
+            title="Create the editor manifest for an existing PHPolygon project folder"
+            @click="importProject"
+        >
+            Import Project
+        </button>
+
+        <!-- Recent Projects dropdown -->
+        <div class="relative">
+            <button
+                class="px-1.5 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active"
+                title="Recent projects"
+                @click="toggleRecentMenu"
+                @blur="closeRecentSoon"
+            >
+                Recent ▾
+            </button>
+            <div
+                v-if="recentMenuOpen"
+                class="absolute left-0 top-full mt-1 z-50 bg-editor-panel border border-editor-border rounded shadow-lg min-w-[240px] max-w-[420px] py-1"
+            >
+                <div
+                    v-if="projectStore.recent.length === 0"
+                    class="px-3 py-2 text-xs text-editor-muted"
+                >
+                    No recent projects
+                </div>
+                <button
+                    v-for="r in projectStore.recent"
+                    :key="r.dir"
+                    class="w-full text-left px-3 py-1 hover:bg-editor-hover"
+                    :title="r.dir"
+                    @mousedown.prevent="openRecent(r.dir, r.name)"
+                >
+                    <div class="text-xs truncate">{{ r.name }}</div>
+                    <div class="text-[10px] text-editor-muted truncate" dir="rtl">{{ r.dir }}</div>
+                </button>
+            </div>
+        </div>
+
+        <div class="w-px h-5 bg-editor-border mx-1" />
+
+        <!-- Workspace: Scene / UI -->
+        <div class="inline-flex rounded border border-editor-border overflow-hidden">
+            <button
+                class="px-2 py-0.5 text-xs"
+                :class="editorStore.workspace === 'scene' ? 'bg-editor-accent text-white' : 'hover:bg-editor-hover'"
+                @click="editorStore.setWorkspace('scene')"
+            >
+                Scene
+            </button>
+            <button
+                class="px-2 py-0.5 text-xs"
+                :class="editorStore.workspace === 'ui' ? 'bg-editor-accent text-white' : 'hover:bg-editor-hover'"
+                @click="editorStore.setWorkspace('ui')"
+            >
+                UI
+            </button>
+            <button
+                class="px-2 py-0.5 text-xs"
+                :class="editorStore.workspace === 'panel' ? 'bg-editor-accent text-white' : 'hover:bg-editor-hover'"
+                @click="editorStore.setWorkspace('panel')"
+            >
+                Panels
+            </button>
+        </div>
+
         <div class="w-px h-5 bg-editor-border mx-1" />
 
         <!-- Play / Stop -->
@@ -128,7 +266,18 @@ async function switchScene(e: Event) {
             {{ editorStore.playing ? 'Stop' : 'Play' }}
         </button>
 
+        <template v-if="editorStore.workspace === 'scene'">
         <div class="w-px h-5 bg-editor-border mx-1" />
+
+        <!-- New Scene -->
+        <button
+            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
+            :disabled="!projectStore.opened"
+            title="Create a new scene (authored in the editor, saved as PHP)"
+            @click="newScene"
+        >
+            New Scene
+        </button>
 
         <!-- Save -->
         <button
@@ -188,7 +337,7 @@ async function switchScene(e: Event) {
                 class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
                 :disabled="!sceneStore.name"
                 @click="createMenuOpen = !createMenuOpen"
-                @blur="setTimeout(() => createMenuOpen = false, 120)"
+                @blur="closeCreateSoon"
             >
                 + Create
             </button>
@@ -202,32 +351,48 @@ async function switchScene(e: Event) {
                 >
                     Empty Entity
                 </button>
-                <div class="border-t border-editor-border my-1" />
-                <div class="px-3 py-0.5 text-[10px] text-editor-muted uppercase tracking-wide">3D Primitive</div>
-                <button
-                    class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                    @mousedown.prevent="addPrimitive('box')"
-                >
-                    Box
-                </button>
-                <button
-                    class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                    @mousedown.prevent="addPrimitive('sphere')"
-                >
-                    Sphere
-                </button>
-                <button
-                    class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                    @mousedown.prevent="addPrimitive('cylinder')"
-                >
-                    Cylinder
-                </button>
-                <button
-                    class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                    @mousedown.prevent="addPrimitive('plane')"
-                >
-                    Plane
-                </button>
+
+                <!-- 2D content -->
+                <template v-if="sceneStore.mode === '2d'">
+                    <div class="border-t border-editor-border my-1" />
+                    <div class="px-3 py-0.5 text-[10px] text-editor-muted uppercase tracking-wide">2D</div>
+                    <button
+                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
+                        @mousedown.prevent="addSprite"
+                    >
+                        Sprite
+                    </button>
+                </template>
+
+                <!-- 3D primitives -->
+                <template v-else>
+                    <div class="border-t border-editor-border my-1" />
+                    <div class="px-3 py-0.5 text-[10px] text-editor-muted uppercase tracking-wide">3D Primitive</div>
+                    <button
+                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
+                        @mousedown.prevent="addPrimitive('box')"
+                    >
+                        Box
+                    </button>
+                    <button
+                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
+                        @mousedown.prevent="addPrimitive('sphere')"
+                    >
+                        Sphere
+                    </button>
+                    <button
+                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
+                        @mousedown.prevent="addPrimitive('cylinder')"
+                    >
+                        Cylinder
+                    </button>
+                    <button
+                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
+                        @mousedown.prevent="addPrimitive('plane')"
+                    >
+                        Plane
+                    </button>
+                </template>
             </div>
         </div>
 
@@ -265,6 +430,7 @@ async function switchScene(e: Event) {
                 3D
             </button>
         </div>
+        </template>
 
         <div class="flex-1" />
 

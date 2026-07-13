@@ -16,7 +16,7 @@ class RenameEntityCommand implements CommandInterface
     {
         $doc = $context->getActiveDocument();
         if ($doc === null) {
-            throw new RuntimeException("No active scene document");
+            throw new RuntimeException('No active scene document');
         }
 
         $oldName = is_string($this->args['oldName'] ?? null) ? $this->args['oldName'] : null;

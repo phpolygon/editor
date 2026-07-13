@@ -12,9 +12,9 @@ class ProjectLoader
 
     public function load(string $projectDir): ProjectManifest
     {
-        $path = rtrim($projectDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . self::MANIFEST_FILE;
+        $path = rtrim($projectDir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.self::MANIFEST_FILE;
 
-        if (!file_exists($path)) {
+        if (! file_exists($path)) {
             throw new RuntimeException("Project manifest not found: {$path}");
         }
 
@@ -24,7 +24,7 @@ class ProjectLoader
         }
 
         $data = json_decode($content, true);
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             throw new RuntimeException("Invalid project manifest JSON: {$path}");
         }
 
@@ -34,13 +34,13 @@ class ProjectLoader
 
     public function save(ProjectManifest $manifest, string $projectDir): void
     {
-        $path = rtrim($projectDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . self::MANIFEST_FILE;
+        $path = rtrim($projectDir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.self::MANIFEST_FILE;
         $json = json_encode($manifest->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         file_put_contents($path, $json);
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function fromArray(array $data): ProjectManifest
     {
@@ -48,6 +48,8 @@ class ProjectLoader
 
         /** @var array<string, string> $psr4Roots */
         $psr4Roots = is_array($data['psr4Roots'] ?? null) ? $data['psr4Roots'] : [];
+
+        $defaultMode = ($data['defaultMode'] ?? null) === '2d' ? '2d' : '3d';
 
         return new ProjectManifest(
             name: is_string($data['name']) ? $data['name'] : '',
@@ -57,15 +59,20 @@ class ProjectLoader
             assetsPath: is_string($data['assetsPath'] ?? null) ? $data['assetsPath'] : 'assets',
             psr4Roots: $psr4Roots,
             entryScene: is_string($data['entryScene'] ?? null) ? $data['entryScene'] : '',
+            defaultMode: $defaultMode,
+            uiPath: is_string($data['uiPath'] ?? null) ? $data['uiPath'] : 'ui',
+            panelLayoutsPath: is_string($data['panelLayoutsPath'] ?? null) ? $data['panelLayoutsPath'] : 'assets/ui',
+            liveWorldScene: is_string($data['liveWorldScene'] ?? null) ? $data['liveWorldScene'] : '',
+            liveWorldCommand: is_string($data['liveWorldCommand'] ?? null) ? $data['liveWorldCommand'] : '',
         );
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     private function validate(array $data): void
     {
-        if (!isset($data['name']) || !is_string($data['name'])) {
+        if (! isset($data['name']) || ! is_string($data['name'])) {
             throw new RuntimeException("Project manifest must have a 'name' string field");
         }
     }

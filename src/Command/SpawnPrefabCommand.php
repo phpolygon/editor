@@ -30,9 +30,9 @@ class SpawnPrefabCommand implements CommandInterface
             throw new RuntimeException('Assets directory not found');
         }
 
-        $absolute = realpath($assetsDir . DIRECTORY_SEPARATOR . $relPath);
-        if ($absolute === false || !is_file($absolute)
-            || !str_starts_with($absolute, $assetsDir . DIRECTORY_SEPARATOR)
+        $absolute = realpath($assetsDir.DIRECTORY_SEPARATOR.$relPath);
+        if ($absolute === false || ! is_file($absolute)
+            || ! str_starts_with($absolute, $assetsDir.DIRECTORY_SEPARATOR)
         ) {
             throw new RuntimeException("Prefab file not found: {$relPath}");
         }
@@ -43,7 +43,7 @@ class SpawnPrefabCommand implements CommandInterface
         }
 
         $decoded = json_decode($raw, true);
-        if (!is_array($decoded) || !isset($decoded['root']) || !is_array($decoded['root'])) {
+        if (! is_array($decoded) || ! isset($decoded['root']) || ! is_array($decoded['root'])) {
             throw new RuntimeException("Invalid prefab format: {$relPath}");
         }
 
@@ -57,12 +57,12 @@ class SpawnPrefabCommand implements CommandInterface
 
         return [
             'spawned' => $spawnedRootName,
-            'parent'  => $parent,
+            'parent' => $parent,
         ];
     }
 
     /**
-     * @param array<string, mixed> $node
+     * @param  array<string, mixed>  $node
      */
     private function spawn(SceneDocument $doc, array $node, ?string $parent): string
     {
@@ -74,7 +74,7 @@ class SpawnPrefabCommand implements CommandInterface
         /** @var list<array<string, mixed>> $components */
         $components = isset($node['components']) && is_array($node['components']) ? $node['components'] : [];
         foreach ($components as $component) {
-            if (!is_array($component) || !isset($component['_class']) || !is_string($component['_class'])) {
+            if (! is_array($component) || ! isset($component['_class']) || ! is_string($component['_class'])) {
                 continue;
             }
             $class = $component['_class'];
@@ -98,9 +98,10 @@ class SpawnPrefabCommand implements CommandInterface
             return $base;
         }
         $i = 2;
-        while ($doc->getEntity($base . '_' . $i) !== null) {
+        while ($doc->getEntity($base.'_'.$i) !== null) {
             $i++;
         }
-        return $base . '_' . $i;
+
+        return $base.'_'.$i;
     }
 }

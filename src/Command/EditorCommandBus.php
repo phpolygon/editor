@@ -17,7 +17,7 @@ class EditorCommandBus
     ) {}
 
     /**
-     * @param class-string<CommandInterface> $commandClass
+     * @param  class-string<CommandInterface>  $commandClass
      */
     public function register(string $name, string $commandClass): void
     {
@@ -25,12 +25,12 @@ class EditorCommandBus
     }
 
     /**
-     * @param array<string, mixed> $args
+     * @param  array<string, mixed>  $args
      * @return array<string, mixed>
      */
     public function dispatch(string $name, array $args = []): array
     {
-        if (!isset($this->commands[$name])) {
+        if (! isset($this->commands[$name])) {
             throw new RuntimeException("Unknown editor command: {$name}");
         }
 

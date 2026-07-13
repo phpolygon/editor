@@ -10,8 +10,15 @@ interface ProjectData {
         scenesPath: string;
         assetsPath: string;
         entryScene: string;
+        defaultMode?: '2d' | '3d';
     };
     components?: Record<string, unknown>;
+}
+
+export interface RecentProject {
+    dir: string;
+    name: string;
+    lastOpened: number;
 }
 
 export const useProjectStore = defineStore('project', () => {
@@ -20,13 +27,16 @@ export const useProjectStore = defineStore('project', () => {
     const scenesPath = ref('');
     const assetsPath = ref('');
     const entryScene = ref('');
+    const defaultMode = ref<'2d' | '3d'>('3d');
     const opened = ref(false);
+    const recent = ref<RecentProject[]>([]);
 
     function applyManifest(data: ProjectData) {
         name.value = data.manifest.name;
         scenesPath.value = data.manifest.scenesPath;
         assetsPath.value = data.manifest.assetsPath;
         entryScene.value = data.manifest.entryScene;
+        defaultMode.value = data.manifest.defaultMode === '2d' ? '2d' : '3d';
         opened.value = true;
     }
 
@@ -40,6 +50,7 @@ export const useProjectStore = defineStore('project', () => {
         if (data.manifest.entryScene) {
             await sceneStore.load(data.manifest.entryScene);
         }
+        await fetchRecent();
     }
 
     async function openProjectWithDialog() {
@@ -55,6 +66,7 @@ export const useProjectStore = defineStore('project', () => {
             if (data.manifest.entryScene) {
                 await sceneStore.load(data.manifest.entryScene);
             }
+            await fetchRecent();
         } catch (e) {
             // Web-only runs (composer dev) have no NativePHP bridge.
             // Backend returns 503 + fallback hint; fall back to a path
@@ -69,11 +81,78 @@ export const useProjectStore = defineStore('project', () => {
         }
     }
 
+    /**
+     * Import an existing PHPolygon project folder: the backend writes a
+     * `phpolygon.project.json` manifest (if the folder lacks one) and opens it.
+     * Returns whether a fresh manifest was created vs. an already-initialized
+     * project was opened.
+     */
+    async function importProject(dir: string): Promise<{ created: boolean }> {
+        const data = await post<ProjectData & { created?: boolean }>('/project/import', { dir });
+        projectDir.value = dir;
+        applyManifest(data);
+
+        const sceneStore = useSceneStore();
+        await sceneStore.fetchSceneList();
+        if (data.manifest.entryScene) {
+            await sceneStore.load(data.manifest.entryScene);
+        }
+        await fetchRecent();
+
+        return { created: data.created ?? false };
+    }
+
+    async function importProjectWithDialog(): Promise<{ created: boolean }> {
+        try {
+            const data = await post<ProjectData & { projectDir?: string; created?: boolean }>('/project/import-dialog');
+            if (data.projectDir) {
+                projectDir.value = data.projectDir;
+            }
+            applyManifest(data);
+
+            const sceneStore = useSceneStore();
+            await sceneStore.fetchSceneList();
+            if (data.manifest.entryScene) {
+                await sceneStore.load(data.manifest.entryScene);
+            }
+            await fetchRecent();
+
+            return { created: data.created ?? false };
+        } catch (e) {
+            // Web-only runs (composer dev) have no NativePHP bridge; fall back
+            // to a path prompt, mirroring openProjectWithDialog.
+            if (e instanceof ApiError && (e.body as { fallback?: string } | undefined)?.fallback === 'path-input') {
+                const dir = window.prompt('Path to PHPolygon project directory to import:');
+                if (!dir) throw new Error('No directory selected');
+                return await importProject(dir);
+            }
+            throw e;
+        }
+    }
+
     async function fetchProject() {
         const data = await get<{ manifest: ProjectData['manifest']; projectDir: string; opened: boolean }>('/project');
         if (data.opened) {
             projectDir.value = data.projectDir;
             applyManifest({ manifest: data.manifest });
+        }
+    }
+
+    async function fetchRecent() {
+        const data = await get<{ recent: RecentProject[] }>('/project/recent');
+        recent.value = data.recent;
+    }
+
+    /**
+     * Open a project chosen from the recent list. If its directory is gone
+     * the backend prunes it; we refresh the list so the dead entry vanishes.
+     */
+    async function openRecent(dir: string) {
+        try {
+            await openProject(dir);
+        } catch (e) {
+            await fetchRecent();
+            throw e;
         }
     }
 
@@ -83,9 +162,15 @@ export const useProjectStore = defineStore('project', () => {
         scenesPath,
         assetsPath,
         entryScene,
+        defaultMode,
         opened,
+        recent,
         openProject,
         openProjectWithDialog,
+        importProject,
+        importProjectWithDialog,
+        openRecent,
         fetchProject,
+        fetchRecent,
     };
 });

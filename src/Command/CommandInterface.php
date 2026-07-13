@@ -9,7 +9,7 @@ use PHPolygon\Editor\EditorContext;
 interface CommandInterface
 {
     /**
-     * @param array<string, mixed> $args
+     * @param  array<string, mixed>  $args
      */
     public function __construct(array $args = []);
 
