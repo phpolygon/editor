@@ -86,6 +86,14 @@ return [
         'content',
         'node_modules',
         '*/tests',
+
+        // The engine (phpolygon/phpolygon) ships a full editor sub-application
+        // with its own vendored Electron + node_modules (2+ GB, a nested
+        // Electron.app). Bundling it bloats the package and breaks macOS
+        // codesign ("bundle format is ambiguous"). It is never used at runtime.
+        'vendor/phpolygon/phpolygon/editor',
+        'vendor/phpolygon/phpolygon/tools',
+        'vendor/phpolygon/phpolygon/examples',
     ],
 
     /**
