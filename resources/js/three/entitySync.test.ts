@@ -1,14 +1,16 @@
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, vi, type Mock } from 'vitest';
 import * as THREE from 'three';
 import type { EntityNode } from '@/types';
 
 vi.mock('@/bridge/commands', () => ({
     getMesh: vi.fn(),
     getMaterial: vi.fn(),
+    evaluateProceduralMesh: vi.fn(),
     assetFileUrl: (p: string) => `/test-assets/${p}`,
 }));
 
 import { EntitySync } from './entitySync';
+import { evaluateProceduralMesh } from '@/bridge/commands';
 import { clearMeshCache } from './meshCache';
 import { clearMaterialCache } from './materialCache';
 
@@ -33,6 +35,31 @@ describe('EntitySync', () => {
         clearMaterialCache();
         root = new THREE.Group();
         sync = new EntitySync(root);
+    });
+
+    it('evaluates a ProceduralMesh component into mesh geometry', async () => {
+        (evaluateProceduralMesh as unknown as Mock).mockResolvedValue({
+            id: '', version: 0,
+            vertices: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+            normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+            uvs: [0, 0, 1, 0, 0, 1],
+            indices: [0, 1, 2],
+            vertexCount: 3, triangleCount: 1,
+        });
+
+        sync.sync([
+            entity('Rock', [
+                transform3D(),
+                { _class: 'PHPolygon\\Component\\ProceduralMesh', properties: { nodes: [{ id: 'b', type: 'box' }], output: 'b', meshId: '' } },
+            ]),
+        ]);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const group = root.children[0];
+        const mesh = group.children.find((c) => c instanceof THREE.Mesh) as THREE.Mesh;
+        expect(mesh).toBeTruthy();
+        expect(mesh.geometry.getAttribute('position').count).toBe(3);
+        expect(evaluateProceduralMesh).toHaveBeenCalledWith([{ id: 'b', type: 'box' }], 'b', '');
     });
 
     it('creates a group per entity on first sync', () => {

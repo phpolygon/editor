@@ -10,7 +10,7 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const pending = new Map<string, Promise<THREE.BufferGeometry | null>>();
 
-function buildGeometry(data: MeshData): THREE.BufferGeometry {
+export function buildGeometry(data: MeshData): THREE.BufferGeometry {
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.Float32BufferAttribute(data.vertices, 3));
     if (data.normals.length === data.vertices.length) {
@@ -49,6 +49,19 @@ export async function loadMesh(id: string): Promise<THREE.BufferGeometry | null>
 
     pending.set(id, promise);
     return promise;
+}
+
+/**
+ * Store geometry built from an already-fetched MeshData under `id`, replacing
+ * (and disposing) any previous entry. Used for dynamically generated meshes —
+ * e.g. a live ProceduralMesh preview — where the data arrives from an evaluate
+ * call rather than a plain `get_mesh` fetch.
+ */
+export function setMesh(id: string, data: MeshData): THREE.BufferGeometry {
+    cache.get(id)?.geometry.dispose();
+    const geometry = buildGeometry(data);
+    cache.set(id, { geometry, version: data.version });
+    return geometry;
 }
 
 export function clearMeshCache(): void {

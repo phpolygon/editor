@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { loadMesh, placeholderGeometry } from './meshCache';
 import { loadMaterial, placeholderMaterial } from './materialCache';
+import { previewProceduralMesh } from './proceduralPreview';
+import type { GraphNode } from '@/prefab/graph';
 import type { ComponentData, EntityNode } from '@/types';
 
 const LIGHT_CLASSES = new Set([
@@ -159,7 +161,12 @@ export class EntitySync {
         this.clearAuxChildren(synced);
 
         const meshRenderer = findComponent(node, 'MeshRenderer');
-        if (meshRenderer) {
+        const proceduralMesh = findComponent(node, 'ProceduralMesh');
+        if (proceduralMesh) {
+            // Procedural geometry drives the mesh; a MeshRenderer, if present,
+            // still supplies material + visibility.
+            this.applyProceduralMesh(synced, proceduralMesh, meshRenderer);
+        } else if (meshRenderer) {
             this.applyMeshRenderer(synced, meshRenderer);
         } else if (synced.meshChild) {
             synced.object.remove(synced.meshChild);
@@ -195,14 +202,8 @@ export class EntitySync {
         const materialId = typeof comp.properties.materialId === 'string' ? comp.properties.materialId : '';
         const visible = comp.properties.visible !== false;
 
-        if (!synced.meshChild) {
-            const mesh = new THREE.Mesh(placeholderGeometry(), placeholderMaterial());
-            mesh.name = `${synced.name}__mesh`;
-            mesh.userData.entityName = synced.name;
-            synced.meshChild = mesh;
-            synced.object.add(mesh);
-        }
-        synced.meshChild.visible = visible;
+        this.ensureMeshChild(synced);
+        synced.meshChild!.visible = visible;
 
         const reqId = (this.meshRequests.get(synced.name) ?? 0) + 1;
         this.meshRequests.set(synced.name, reqId);
@@ -219,6 +220,49 @@ export class EntitySync {
             void loadMaterial(materialId).then((mat) => {
                 if (this.meshRequests.get(synced.name) !== reqId) return;
                 if (!synced.meshChild) return;
+                synced.meshChild.material = mat ?? placeholderMaterial();
+            });
+        }
+    }
+
+    private ensureMeshChild(synced: SyncedEntity): THREE.Mesh {
+        if (!synced.meshChild) {
+            const mesh = new THREE.Mesh(placeholderGeometry(), placeholderMaterial());
+            mesh.name = `${synced.name}__mesh`;
+            mesh.userData.entityName = synced.name;
+            synced.meshChild = mesh;
+            synced.object.add(mesh);
+        }
+        return synced.meshChild;
+    }
+
+    private applyProceduralMesh(
+        synced: SyncedEntity,
+        comp: ComponentData,
+        meshRenderer: ComponentData | undefined,
+    ): void {
+        const nodes = Array.isArray(comp.properties.nodes) ? (comp.properties.nodes as GraphNode[]) : [];
+        const output = typeof comp.properties.output === 'string' ? comp.properties.output : '';
+        const meshId = typeof comp.properties.meshId === 'string' ? comp.properties.meshId : '';
+        const visible = meshRenderer ? meshRenderer.properties.visible !== false : true;
+
+        const mesh = this.ensureMeshChild(synced);
+        mesh.visible = visible;
+
+        const reqId = (this.meshRequests.get(synced.name) ?? 0) + 1;
+        this.meshRequests.set(synced.name, reqId);
+
+        void previewProceduralMesh(nodes, output, meshId).then((geom) => {
+            if (this.meshRequests.get(synced.name) !== reqId || !synced.meshChild) return;
+            synced.meshChild.geometry = geom ?? placeholderGeometry();
+        });
+
+        const materialId = meshRenderer && typeof meshRenderer.properties.materialId === 'string'
+            ? meshRenderer.properties.materialId
+            : '';
+        if (materialId) {
+            void loadMaterial(materialId).then((mat) => {
+                if (this.meshRequests.get(synced.name) !== reqId || !synced.meshChild) return;
                 synced.meshChild.material = mat ?? placeholderMaterial();
             });
         }

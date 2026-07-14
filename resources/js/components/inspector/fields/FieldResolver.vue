@@ -37,6 +37,13 @@ const fieldProps = computed(() => {
         modelValue: props.value ?? props.schema.default,
     };
 
+    // The node-graph editor spans more than its own property (it also sets the
+    // sibling `output`), so it needs the owning entity/component to reach them.
+    if (props.schema.editorHint === 'nodegraph') {
+        base.entityName = props.entityName;
+        base.componentClass = props.componentClass;
+    }
+
     if (props.schema.min !== undefined) base.min = props.schema.min;
     if (props.schema.max !== undefined) base.max = props.schema.max;
     if (props.schema.step !== undefined) base.step = props.schema.step;

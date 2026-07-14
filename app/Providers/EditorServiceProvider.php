@@ -38,6 +38,8 @@ use PHPolygon\Editor\Command\RenderUiLayoutCommand;
 use PHPolygon\Editor\Command\ReparentEntityCommand;
 use PHPolygon\Editor\Command\ReparentWidgetCommand;
 use PHPolygon\Editor\Command\SavePanelLayoutCommand;
+use PHPolygon\Editor\Command\EvaluateProceduralMeshCommand;
+use PHPolygon\Editor\Command\ListPrefabsCommand;
 use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SaveSceneCommand;
 use PHPolygon\Editor\Command\SaveUiLayoutCommand;
@@ -195,6 +197,8 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('create_sprite', CreateSpriteCommand::class);
             $bus->register('save_prefab', SavePrefabCommand::class);
             $bus->register('spawn_prefab', SpawnPrefabCommand::class);
+            $bus->register('list_prefabs', ListPrefabsCommand::class);
+            $bus->register('evaluate_procedural_mesh', EvaluateProceduralMeshCommand::class);
 
             // UI layout (widget-tree) editing
             $bus->register('list_ui_layouts', ListUiLayoutsCommand::class);

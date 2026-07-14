@@ -309,3 +309,15 @@ export function spawnPrefab(
 ): Promise<{ spawned: string; parent: string | null }> {
     return cmd('spawn_prefab', { path, parent });
 }
+
+export function listPrefabs(): Promise<{ prefabs: { name: string; path: string }[] }> {
+    return cmd('list_prefabs', {});
+}
+
+export function evaluateProceduralMesh(
+    nodes: unknown[],
+    output: string,
+    meshId = '',
+): Promise<MeshData> {
+    return cmd<MeshData>('evaluate_procedural_mesh', { nodes, output, meshId });
+}

@@ -10,6 +10,7 @@ import ColorField from './ColorField.vue';
 import SliderField from './SliderField.vue';
 import AngleField from './AngleField.vue';
 import AssetField from './AssetField.vue';
+import NodeGraphField from './NodeGraphField.vue';
 
 /**
  * Resolve the leaf field editor for a property schema (editor hint first, then
@@ -19,6 +20,8 @@ import AssetField from './AssetField.vue';
  */
 export function resolveFieldComponent(schema: PropertySchemaDTO): Component {
     switch (schema.editorHint) {
+        case 'nodegraph':
+            return NodeGraphField;
         case 'slider':
             return SliderField;
         case 'angle':

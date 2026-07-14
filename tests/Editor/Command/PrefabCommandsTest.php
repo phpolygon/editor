@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Tests\Command;
 
 use PHPUnit\Framework\TestCase;
+use PHPolygon\Editor\Command\ListPrefabsCommand;
 use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SpawnPrefabCommand;
 use PHPolygon\Editor\EditorContext;
@@ -131,6 +132,31 @@ class PrefabCommandsTest extends TestCase
         $this->assertSame('Car_2', $spawn['spawned']);
         $this->assertNotNull($this->context->activeDocument->getEntity('Car'));
         $this->assertNotNull($this->context->activeDocument->getEntity('Car_2'));
+    }
+
+    public function testListPrefabsIsEmptyWhenNoneSaved(): void
+    {
+        $result = (new ListPrefabsCommand())->execute($this->context);
+
+        $this->assertSame(['prefabs' => []], $result);
+    }
+
+    public function testListPrefabsReturnsSavedPrefabsSortedByName(): void
+    {
+        (new SavePrefabCommand(['entityName' => 'Car']))->execute($this->context);
+        (new SavePrefabCommand(['entityName' => 'Car', 'prefabName' => 'Alpha']))->execute($this->context);
+
+        $result = (new ListPrefabsCommand())->execute($this->context);
+
+        $this->assertCount(2, $result['prefabs']);
+        $this->assertSame('Alpha', $result['prefabs'][0]['name']);
+        $this->assertSame('prefabs/Alpha.prefab.json', $result['prefabs'][0]['path']);
+        $this->assertSame('Car', $result['prefabs'][1]['name']);
+
+        // The listed path is exactly what SpawnPrefabCommand consumes.
+        $this->context->activeDocument = new SceneDocument(['name' => 'test', 'entities' => []]);
+        $spawn = (new SpawnPrefabCommand(['path' => $result['prefabs'][0]['path']]))->execute($this->context);
+        $this->assertSame('Car', $spawn['spawned']);
     }
 
     public function testSpawnUnderParent(): void
