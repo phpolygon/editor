@@ -78,6 +78,7 @@ function resolveMode(sceneName: string, nodes: EntityNode[]): SceneMode {
 
 export const useSceneStore = defineStore('scene', () => {
     const name = ref<string>('');
+    const sourceName = ref<string>('');
     const entities = ref<EntityNode[]>([]);
     const dirty = ref(false);
     const loading = ref(false);
@@ -118,12 +119,25 @@ export const useSceneStore = defineStore('scene', () => {
         loading.value = true;
         try {
             const data = await commands.loadScene(sceneName);
+            sourceName.value = sceneName; // the file basename we loaded from
             name.value = data.name;
             entities.value = normaliseEntities(data.entities);
             mode.value = resolveMode(data.name, entities.value);
             dirty.value = false;
         } finally {
             loading.value = false;
+        }
+    }
+
+    /**
+     * Re-run the current scene's PHP build() and re-capture its meshes/materials
+     * — for picking up code changes after editing the project's scene/builders.
+     * Reloads by the file basename (data.name is the scene's internal getName(),
+     * which isn't the file identifier the loader expects).
+     */
+    async function reload() {
+        if (sourceName.value) {
+            await load(sourceName.value);
         }
     }
 
@@ -261,6 +275,7 @@ export const useSceneStore = defineStore('scene', () => {
         findEntity,
         fetchSceneList,
         load,
+        reload,
         createScene,
         save,
         setMode,

@@ -26,6 +26,14 @@ let rafHandle = 0;
 let pointerDownAt: { x: number; y: number } | null = null;
 let suppressSyncWhileDragging = false;
 
+// On-demand rendering: only redraw when something actually changed, instead of
+// running the full scene (hundreds of objects + large terrain) at 60fps while
+// idle. Every change source calls invalidate().
+let needsRender = true;
+function invalidate(): void {
+    needsRender = true;
+}
+
 function resize(): void {
     if (!renderer || !camera || !container.value) return;
     const w = container.value.clientWidth;
@@ -34,14 +42,20 @@ function resize(): void {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    invalidate();
 }
 
 function renderFrame(): void {
     if (!renderer || !scene || !camera) return;
+    rafHandle = requestAnimationFrame(renderFrame);
+    if (!needsRender) return;
+
+    // Clear before update(): OrbitControls damping emits 'change' during
+    // update(), which re-sets the flag and keeps us rendering until it settles.
+    needsRender = false;
     orbit?.update();
     outline?.update();
     renderer.render(scene, camera);
-    rafHandle = requestAnimationFrame(renderFrame);
 }
 
 function pickerCoords(event: PointerEvent): { x: number; y: number } {
@@ -200,6 +214,7 @@ function setup(): void {
     orbit = new OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
     orbit.dampingFactor = 0.08;
+    orbit.addEventListener('change', invalidate);
 
     const grid = new THREE.GridHelper(20, 20, 0x444444, 0x2a2a2a);
     (grid.material as THREE.Material).transparent = true;
@@ -219,7 +234,7 @@ function setup(): void {
     entityRoot.name = '__entities';
     scene.add(entityRoot);
 
-    sync = new EntitySync(entityRoot);
+    sync = new EntitySync(entityRoot, invalidate);
     sync.sync(sceneStore.entities);
 
     gizmo = new TransformControls(camera, renderer.domElement);
@@ -237,6 +252,7 @@ function setup(): void {
     });
     gizmo.addEventListener('objectChange', () => {
         outline?.update();
+        invalidate();
     });
     const gizmoHelper = gizmo.getHelper();
     if (gizmoHelper) scene.add(gizmoHelper);
@@ -293,6 +309,7 @@ watch(
         sync?.sync(entities);
         refreshOutline();
         attachGizmo();
+        invalidate();
     },
     { deep: true },
 );
@@ -302,6 +319,7 @@ watch(
     () => {
         attachGizmo();
         refreshOutline();
+        invalidate();
     },
 );
 

@@ -100,6 +100,15 @@ function togglePlay() {
     }
 }
 
+async function rebuild() {
+    try {
+        await sceneStore.reload();
+        addToast('Scene rebuilt', 'success');
+    } catch (e: any) {
+        addToast(e?.message ?? 'Rebuild failed', 'error');
+    }
+}
+
 async function openProject() {
     try {
         await projectStore.openProjectWithDialog();
@@ -264,6 +273,18 @@ async function switchScene(e: Event) {
             @click="togglePlay"
         >
             {{ editorStore.playing ? 'Stop' : 'Play' }}
+        </button>
+
+        <!-- Rebuild: re-run the current scene's PHP build() + re-capture assets,
+             so several code changes can be applied at once, on demand. -->
+        <button
+            v-if="editorStore.workspace === 'scene'"
+            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
+            :disabled="sceneStore.loading || !sceneStore.name"
+            title="Rebuild: reload the current scene from PHP (re-runs build(), re-captures meshes/materials)"
+            @click="rebuild"
+        >
+            ⟳ Rebuild
         </button>
 
         <template v-if="editorStore.workspace === 'scene'">

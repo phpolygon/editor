@@ -97,7 +97,11 @@ export class EntitySync {
     private readonly entities = new Map<string, SyncedEntity>();
     private readonly meshRequests = new Map<string, number>();
 
-    constructor(root: THREE.Object3D) {
+    /**
+     * @param onChanged Called whenever an async mesh/material load applies a
+     *   change, so an on-demand renderer can schedule a redraw.
+     */
+    constructor(root: THREE.Object3D, private readonly onChanged: () => void = () => {}) {
         this.root = root;
     }
 
@@ -213,6 +217,7 @@ export class EntitySync {
                 if (this.meshRequests.get(synced.name) !== reqId) return;
                 if (!synced.meshChild) return;
                 synced.meshChild.geometry = geom ?? placeholderGeometry();
+                this.onChanged();
             });
         }
 
@@ -221,6 +226,7 @@ export class EntitySync {
                 if (this.meshRequests.get(synced.name) !== reqId) return;
                 if (!synced.meshChild) return;
                 synced.meshChild.material = mat ?? placeholderMaterial();
+                this.onChanged();
             });
         }
     }
@@ -255,6 +261,7 @@ export class EntitySync {
         void previewProceduralMesh(nodes, output, meshId).then((geom) => {
             if (this.meshRequests.get(synced.name) !== reqId || !synced.meshChild) return;
             synced.meshChild.geometry = geom ?? placeholderGeometry();
+            this.onChanged();
         });
 
         const materialId = meshRenderer && typeof meshRenderer.properties.materialId === 'string'
@@ -264,6 +271,7 @@ export class EntitySync {
             void loadMaterial(materialId).then((mat) => {
                 if (this.meshRequests.get(synced.name) !== reqId || !synced.meshChild) return;
                 synced.meshChild.material = mat ?? placeholderMaterial();
+                this.onChanged();
             });
         }
     }
