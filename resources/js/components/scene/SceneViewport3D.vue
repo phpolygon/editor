@@ -157,11 +157,36 @@ function onKeyDown(event: KeyboardEvent): void {
     }
 }
 
+/**
+ * A simple vertical gradient sky for the viewport background. The engine draws
+ * the in-game sky with an atmospheric shader (no scene mesh), which the editor
+ * can't mirror from entity data — so we approximate a daytime sky here instead
+ * of leaving a flat void behind the scene.
+ */
+function makeSkyBackground(): THREE.Color | THREE.Texture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return new THREE.Color(0x1e1e1e);
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#5b8fd6'); // zenith
+    gradient.addColorStop(0.55, '#9fc4e8'); // mid sky
+    gradient.addColorStop(1, '#dce9f2'); // horizon haze
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+}
+
 function setup(): void {
     if (!container.value) return;
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1e1e1e);
+    scene.background = makeSkyBackground();
 
     camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
     camera.position.set(5, 5, 5);

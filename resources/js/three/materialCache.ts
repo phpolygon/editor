@@ -18,7 +18,10 @@ function buildMaterial(data: MaterialData): THREE.MeshStandardMaterial {
         emissive: colorOf(data.emission),
         transparent: data.alpha < 1.0,
         opacity: data.alpha,
-        side: THREE.FrontSide,
+        // Editor viewport renders double-sided: engine-generated meshes (e.g.
+        // procedurally built terrain/water planes) may wind their faces so the
+        // top would be culled when viewed from above under FrontSide.
+        side: THREE.DoubleSide,
     });
 
     if (data.albedoTexture) {
