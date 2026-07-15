@@ -26,6 +26,14 @@ class LoadSceneCommand implements CommandInterface
             throw new RuntimeException("Missing 'sceneName' argument");
         }
 
+        // Scenes are addressed by file basename. Accept a fully-qualified class
+        // name too (e.g. a manifest entryScene like "CodeRescue\Scene\MainMenu")
+        // by reducing it to the basename, so it is not mistaken for a path
+        // under the scenes directory.
+        if (str_contains($sceneName, '\\')) {
+            $sceneName = substr((string) strrchr($sceneName, '\\'), 1);
+        }
+
         $scenesDir = $context->getScenesDir();
         $jsonFile = Path::join($scenesDir, $sceneName.'.scene.json');
 
