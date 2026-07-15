@@ -11,6 +11,7 @@ import SliderField from './SliderField.vue';
 import AngleField from './AngleField.vue';
 import AssetField from './AssetField.vue';
 import NodeGraphField from './NodeGraphField.vue';
+import QuaternionField from './QuaternionField.vue';
 
 /**
  * Resolve the leaf field editor for a property schema (editor hint first, then
@@ -22,6 +23,8 @@ export function resolveFieldComponent(schema: PropertySchemaDTO): Component {
     switch (schema.editorHint) {
         case 'nodegraph':
             return NodeGraphField;
+        case 'quaternion':
+            return QuaternionField;
         case 'slider':
             return SliderField;
         case 'angle':
@@ -52,6 +55,8 @@ export function resolveFieldComponent(schema: PropertySchemaDTO): Component {
             return Vec2Field;
         case 'Vec3':
             return Vec3Field;
+        case 'Quaternion':
+            return QuaternionField;
         case 'Color':
             return ColorField;
         default:
