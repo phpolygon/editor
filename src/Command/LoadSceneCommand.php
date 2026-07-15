@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Project\ProjectAssetCache;
 use PHPolygon\Editor\Scene\EntityFormatter;
 use PHPolygon\Editor\Scene\SceneClassResolver;
 use PHPolygon\Editor\SceneDocument;
@@ -85,6 +86,11 @@ class LoadSceneCommand implements CommandInterface
 
         $scene = new $className;
         $data = $context->transpiler->toArray($scene);
+
+        // build() just populated the mesh/material registries; snapshot them so
+        // subsequent get_mesh / get_material requests (fresh, empty registries)
+        // can still serve assets the scene created imperatively.
+        ProjectAssetCache::capture($context->projectDir);
 
         // The document keeps the flat, on-disk component shape; the frontend
         // gets the nested shape it consumes for rendering and inspecting.

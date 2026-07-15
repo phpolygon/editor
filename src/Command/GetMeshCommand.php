@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Project\ProjectAssetCache;
 use PHPolygon\Geometry\MeshRegistry;
 use RuntimeException;
 
@@ -21,19 +22,16 @@ class GetMeshCommand implements CommandInterface
         }
 
         $mesh = MeshRegistry::get($id);
-        if ($mesh === null) {
-            throw new RuntimeException("Unknown mesh: {$id}");
+        if ($mesh !== null) {
+            return ProjectAssetCache::meshToArray($id, $mesh, MeshRegistry::version($id));
         }
 
-        return [
-            'id' => $id,
-            'version' => MeshRegistry::version($id),
-            'vertices' => $mesh->vertices,
-            'normals' => $mesh->normals,
-            'uvs' => $mesh->uvs,
-            'indices' => $mesh->indices,
-            'vertexCount' => $mesh->vertexCount(),
-            'triangleCount' => $mesh->triangleCount(),
-        ];
+        // Fall back to the per-project snapshot captured at scene-load time.
+        $cached = ProjectAssetCache::mesh($context->projectDir, $id);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        throw new RuntimeException("Unknown mesh: {$id}");
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Project\ProjectAssetCache;
 use PHPolygon\Rendering\MaterialRegistry;
 
 class ListMaterialsCommand implements CommandInterface
@@ -14,7 +15,10 @@ class ListMaterialsCommand implements CommandInterface
 
     public function execute(EditorContext $context): array
     {
-        $ids = MaterialRegistry::ids();
+        $ids = array_values(array_unique(array_merge(
+            MaterialRegistry::ids(),
+            ProjectAssetCache::materialIds($context->projectDir),
+        )));
         sort($ids);
 
         return ['materials' => $ids];

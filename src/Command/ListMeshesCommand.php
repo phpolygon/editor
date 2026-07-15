@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Project\ProjectAssetCache;
 use PHPolygon\Geometry\MeshRegistry;
 
 class ListMeshesCommand implements CommandInterface
@@ -14,7 +15,11 @@ class ListMeshesCommand implements CommandInterface
 
     public function execute(EditorContext $context): array
     {
-        $ids = MeshRegistry::ids();
+        $registryIds = MeshRegistry::ids();
+        $ids = array_values(array_unique(array_merge(
+            $registryIds,
+            ProjectAssetCache::meshIds($context->projectDir),
+        )));
         sort($ids);
 
         $meshes = [];
