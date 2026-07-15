@@ -40,6 +40,20 @@ export const useProjectStore = defineStore('project', () => {
         opened.value = true;
     }
 
+    /**
+     * Load the project's entry scene. The manifest stores it as a FQCN (used by
+     * the engine at runtime), but the scene list + loader identify scenes by
+     * file basename — so reduce it and only load when that scene exists.
+     */
+    async function openEntryScene(entryScene: string): Promise<void> {
+        if (!entryScene) return;
+        const sceneStore = useSceneStore();
+        const sceneName = entryScene.split('\\').pop() ?? '';
+        if (sceneName && sceneStore.sceneList.includes(sceneName)) {
+            await sceneStore.load(sceneName);
+        }
+    }
+
     async function openProject(dir: string) {
         const data = await post<ProjectData>('/project/open', { dir });
         projectDir.value = dir;
@@ -47,9 +61,7 @@ export const useProjectStore = defineStore('project', () => {
 
         const sceneStore = useSceneStore();
         await sceneStore.fetchSceneList();
-        if (data.manifest.entryScene) {
-            await sceneStore.load(data.manifest.entryScene);
-        }
+        await openEntryScene(data.manifest.entryScene);
         await fetchRecent();
     }
 
@@ -63,9 +75,7 @@ export const useProjectStore = defineStore('project', () => {
 
             const sceneStore = useSceneStore();
             await sceneStore.fetchSceneList();
-            if (data.manifest.entryScene) {
-                await sceneStore.load(data.manifest.entryScene);
-            }
+            await openEntryScene(data.manifest.entryScene);
             await fetchRecent();
         } catch (e) {
             // Web-only runs (composer dev) have no NativePHP bridge.
@@ -94,9 +104,7 @@ export const useProjectStore = defineStore('project', () => {
 
         const sceneStore = useSceneStore();
         await sceneStore.fetchSceneList();
-        if (data.manifest.entryScene) {
-            await sceneStore.load(data.manifest.entryScene);
-        }
+        await openEntryScene(data.manifest.entryScene);
         await fetchRecent();
 
         return { created: data.created ?? false };
@@ -112,9 +120,7 @@ export const useProjectStore = defineStore('project', () => {
 
             const sceneStore = useSceneStore();
             await sceneStore.fetchSceneList();
-            if (data.manifest.entryScene) {
-                await sceneStore.load(data.manifest.entryScene);
-            }
+            await openEntryScene(data.manifest.entryScene);
             await fetchRecent();
 
             return { created: data.created ?? false };
