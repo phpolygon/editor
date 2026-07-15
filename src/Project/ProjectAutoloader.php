@@ -29,6 +29,12 @@ final class ProjectAutoloader
     public function register(string $projectDir, array $psr4Roots): void
     {
         foreach ($psr4Roots as $prefix => $relativePath) {
+            // A malformed manifest (e.g. psr4Roots given as a JSON list instead
+            // of a namespace => path map) yields int keys / non-string values;
+            // skip them rather than fataling with a TypeError.
+            if (! is_string($prefix) || ! is_string($relativePath)) {
+                continue;
+            }
             $prefix = ltrim($prefix, '\\');
             if ($prefix === '') {
                 continue;
