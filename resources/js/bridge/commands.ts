@@ -329,3 +329,22 @@ export function evaluateProceduralMesh(
 ): Promise<MeshData> {
     return cmd<MeshData>('evaluate_procedural_mesh', { nodes, output, meshId });
 }
+
+/** Save a procedural-mesh graph as a reusable asset under assets/meshes/. */
+export function saveMesh(
+    name: string,
+    nodes: unknown[],
+    output: string,
+): Promise<{ saved: boolean; name: string; path: string; relativePath: string }> {
+    return cmd('save_mesh', { name, nodes, output });
+}
+
+export function listMeshAssets(): Promise<{ meshes: { name: string; path: string }[] }> {
+    return cmd('list_mesh_assets', {});
+}
+
+export function loadMeshAsset(
+    name: string,
+): Promise<{ name: string; nodes: unknown[]; output: string }> {
+    return cmd('load_mesh_asset', { name });
+}

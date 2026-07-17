@@ -1,11 +1,23 @@
 <script setup lang="ts">
-import { type Component } from 'vue';
-import { Box, Circle, Cylinder, Square, Donut, Diamond, Triangle, Move3d, FlipHorizontal2, Combine, RotateCcw } from 'lucide-vue-next';
+import { onMounted, type Component } from 'vue';
+import { Box, Circle, Cylinder, Square, Donut, Diamond, Triangle, Move3d, FlipHorizontal2, Combine, RotateCcw, FileBox } from 'lucide-vue-next';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import Button from '@/components/ui/Button.vue';
 import { useMeshEditorStore } from '@/stores/meshEditor';
+import { useToast } from '@/composables/useToast';
 
 const store = useMeshEditorStore();
+const { addToast } = useToast();
+
+onMounted(() => store.refreshAssets());
+
+async function load(name: string) {
+    try {
+        await store.load(name);
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to load mesh', 'error');
+    }
+}
 
 const generators: { type: string; label: string; icon: Component }[] = [
     { type: 'box', label: 'Box', icon: Box },
@@ -40,6 +52,20 @@ const btn = 'flex items-center gap-2.5 px-2.5 h-8 rounded-md text-xs text-left t
                 <component :is="o.icon" :size="15" :stroke-width="2" class="shrink-0 opacity-80" />
                 {{ o.label }}
             </button>
+
+            <template v-if="store.assets.length > 0">
+                <p class="mt-3 mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-editor-muted">Saved Meshes</p>
+                <button
+                    v-for="m in store.assets"
+                    :key="m.name"
+                    :class="btn"
+                    :title="`Load ${m.name}`"
+                    @click="load(m.name)"
+                >
+                    <FileBox :size="15" :stroke-width="2" class="shrink-0 opacity-80" />
+                    <span class="truncate">{{ m.name }}</span>
+                </button>
+            </template>
         </div>
         <div class="p-2 border-t border-editor-border">
             <Button :icon="RotateCcw" block @click="store.reset()">Reset to box</Button>

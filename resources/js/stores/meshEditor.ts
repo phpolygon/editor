@@ -6,9 +6,10 @@ import {
     createNode,
     uniqueNodeId,
     validate,
+    type GraphNode,
     type ProceduralGraphData,
 } from '@/prefab/graph';
-import { evaluateProceduralMesh } from '@/bridge/commands';
+import { evaluateProceduralMesh, saveMesh, listMeshAssets, loadMeshAsset } from '@/bridge/commands';
 import type { MeshData } from '@/types';
 
 /**
@@ -23,6 +24,7 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
     const preview = ref<MeshData | null>(null);
     const error = ref<string | null>(null);
     const evaluating = ref(false);
+    const assets = ref<{ name: string; path: string }[]>([]);
 
     function starterGraph(): ProceduralGraphData {
         return addNode(emptyGraph(), createNode('box', 'box'));
@@ -61,5 +63,47 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         }
     }
 
-    return { graph, name, preview, error, evaluating, setGraph, addNodeOfType, reset, evaluate };
+    async function refreshAssets() {
+        try {
+            assets.value = (await listMeshAssets()).meshes;
+        } catch {
+            assets.value = [];
+        }
+    }
+
+    /** Save the current graph as a reusable mesh asset. */
+    async function save() {
+        const result = validate(graph.value);
+        if (!result.ok) {
+            error.value = result.errors[0] ?? 'Invalid graph';
+            throw new Error(error.value);
+        }
+        const saved = await saveMesh(name.value.trim() || 'mesh', graph.value.nodes, graph.value.output);
+        await refreshAssets();
+        return saved;
+    }
+
+    /** Load a saved mesh asset back into the editor. */
+    async function load(assetName: string) {
+        const data = await loadMeshAsset(assetName);
+        graph.value = { nodes: data.nodes as GraphNode[], output: data.output };
+        name.value = data.name;
+        await evaluate();
+    }
+
+    return {
+        graph,
+        name,
+        preview,
+        error,
+        evaluating,
+        assets,
+        setGraph,
+        addNodeOfType,
+        reset,
+        evaluate,
+        refreshAssets,
+        save,
+        load,
+    };
 });

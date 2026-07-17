@@ -40,7 +40,10 @@ use PHPolygon\Editor\Command\ReparentWidgetCommand;
 use PHPolygon\Editor\Command\SavePanelLayoutCommand;
 use PHPolygon\Editor\Command\EvaluateProceduralMeshCommand;
 use PHPolygon\Editor\Command\ListPrefabsCommand;
+use PHPolygon\Editor\Command\ListMeshAssetsCommand;
+use PHPolygon\Editor\Command\LoadMeshAssetCommand;
 use PHPolygon\Editor\Command\SaveAudioCommand;
+use PHPolygon\Editor\Command\SaveMeshCommand;
 use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SaveSceneCommand;
 use PHPolygon\Editor\Command\SaveUiLayoutCommand;
@@ -203,6 +206,11 @@ class EditorServiceProvider extends ServiceProvider
 
             // Audio (wave synthesizer)
             $bus->register('save_audio', SaveAudioCommand::class);
+
+            // Mesh assets (mesh editor)
+            $bus->register('save_mesh', SaveMeshCommand::class);
+            $bus->register('list_mesh_assets', ListMeshAssetsCommand::class);
+            $bus->register('load_mesh_asset', LoadMeshAssetCommand::class);
 
             // UI layout (widget-tree) editing
             $bus->register('list_ui_layouts', ListUiLayoutsCommand::class);
