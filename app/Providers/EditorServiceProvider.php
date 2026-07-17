@@ -40,6 +40,7 @@ use PHPolygon\Editor\Command\ReparentWidgetCommand;
 use PHPolygon\Editor\Command\SavePanelLayoutCommand;
 use PHPolygon\Editor\Command\EvaluateProceduralMeshCommand;
 use PHPolygon\Editor\Command\ListPrefabsCommand;
+use PHPolygon\Editor\Command\SaveAudioCommand;
 use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SaveSceneCommand;
 use PHPolygon\Editor\Command\SaveUiLayoutCommand;
@@ -199,6 +200,9 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('spawn_prefab', SpawnPrefabCommand::class);
             $bus->register('list_prefabs', ListPrefabsCommand::class);
             $bus->register('evaluate_procedural_mesh', EvaluateProceduralMeshCommand::class);
+
+            // Audio (wave synthesizer)
+            $bus->register('save_audio', SaveAudioCommand::class);
 
             // UI layout (widget-tree) editing
             $bus->register('list_ui_layouts', ListUiLayoutsCommand::class);

@@ -303,6 +303,14 @@ export function savePrefab(
     return cmd('save_prefab', { entityName, prefabName });
 }
 
+/** Save a generated WAV (base64, no data-URL prefix needed) to assets/audio/. */
+export function saveAudio(
+    name: string,
+    data: string,
+): Promise<{ saved: boolean; name: string; path: string; relativePath: string }> {
+    return cmd('save_audio', { name, data });
+}
+
 export function spawnPrefab(
     path: string,
     parent: string | null = null,
