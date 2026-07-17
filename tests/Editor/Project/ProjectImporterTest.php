@@ -55,6 +55,29 @@ class ProjectImporterTest extends TestCase
         ], $manifest->psr4Roots);
     }
 
+    public function test_stores_psr4_roots_as_portable_forward_slash_paths(): void
+    {
+        // A composer.json authored on Windows may carry backslash roots. The
+        // manifest must normalize them to forward slashes so it reads the same
+        // on every OS and Path::join can rewrite them per platform.
+        file_put_contents($this->projectDir.'/composer.json', json_encode([
+            'name' => 'acme/game',
+            'autoload' => [
+                'psr-4' => [
+                    'Acme\\Game\\' => 'src\\Game\\',
+                    'Acme\\Assets\\' => 'assets\\php',
+                ],
+            ],
+        ]));
+
+        $manifest = $this->importer->import($this->projectDir)['manifest'];
+
+        $this->assertSame([
+            'Acme\\Game\\' => 'src/Game',
+            'Acme\\Assets\\' => 'assets/php',
+        ], $manifest->psr4Roots);
+    }
+
     public function test_falls_back_to_directory_name_without_composer(): void
     {
         $manifest = $this->importer->import($this->projectDir)['manifest'];

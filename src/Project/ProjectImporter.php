@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PHPolygon\Editor\Project;
 
+use PHPolygon\Editor\Support\Path;
 use RuntimeException;
 
 /**
@@ -30,13 +31,13 @@ class ProjectImporter
      */
     public function import(string $dir): array
     {
-        $dir = rtrim($dir, '/\\');
+        $dir = Path::normalize(rtrim($dir, '/\\'));
 
         if (! is_dir($dir)) {
             throw new RuntimeException("Directory not found: {$dir}");
         }
 
-        $manifestPath = $dir.DIRECTORY_SEPARATOR.ProjectLoader::MANIFEST_FILE;
+        $manifestPath = Path::join($dir, ProjectLoader::MANIFEST_FILE);
         if (is_file($manifestPath)) {
             return ['manifest' => $this->loader->load($dir), 'created' => false];
         }
@@ -45,9 +46,11 @@ class ProjectImporter
         $this->loader->save($manifest, $dir);
 
         // Make sure the scene/asset folders the manifest points at exist so
-        // the scene list and asset browser have somewhere to look.
-        $this->ensureDir($dir.DIRECTORY_SEPARATOR.$manifest->scenesPath);
-        $this->ensureDir($dir.DIRECTORY_SEPARATOR.$manifest->assetsPath);
+        // the scene list and asset browser have somewhere to look. The manifest
+        // stores portable forward-slash paths (e.g. "assets/php"); Path::join
+        // rewrites them to the OS separator so mkdir gets a native path.
+        $this->ensureDir(Path::join($dir, $manifest->scenesPath));
+        $this->ensureDir(Path::join($dir, $manifest->assetsPath));
 
         return ['manifest' => $manifest, 'created' => true];
     }
@@ -72,7 +75,7 @@ class ProjectImporter
      */
     private function readComposer(string $dir): array
     {
-        $path = $dir.DIRECTORY_SEPARATOR.'composer.json';
+        $path = Path::join($dir, 'composer.json');
         if (! is_file($path)) {
             return [];
         }
@@ -121,7 +124,9 @@ class ProjectImporter
                 $path = $path[0] ?? null;
             }
             if (is_string($namespace) && is_string($path)) {
-                $roots[$namespace] = rtrim($path, '/\\');
+                // Store a portable (forward-slash) root so the manifest reads
+                // the same on every OS; Path::join rewrites it per platform.
+                $roots[$namespace] = Path::toPortable(rtrim($path, '/\\'));
             }
         }
 
