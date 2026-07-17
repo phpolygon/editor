@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { Boxes, LayoutTemplate, PanelsTopLeft, AudioWaveform, Shapes } from 'lucide-vue-next';
+import { Boxes, LayoutTemplate, PanelsTopLeft, AudioWaveform, Shapes, Palette } from 'lucide-vue-next';
 
 import HierarchyPanel from '@/components/hierarchy/HierarchyPanel.vue';
 import InspectorPanel from '@/components/inspector/InspectorPanel.vue';
@@ -16,6 +16,9 @@ import AudioInspectorPanel from '@/components/audio/AudioInspectorPanel.vue';
 import MeshNodePanel from '@/components/mesh/MeshNodePanel.vue';
 import MeshViewportPanel from '@/components/mesh/MeshViewportPanel.vue';
 import MeshGraphPanel from '@/components/mesh/MeshGraphPanel.vue';
+import MaterialPresetPanel from '@/components/material/MaterialPresetPanel.vue';
+import MaterialViewportPanel from '@/components/material/MaterialViewportPanel.vue';
+import MaterialInspectorPanel from '@/components/material/MaterialInspectorPanel.vue';
 
 /**
  * Data-driven registry of editing workspaces. Each workspace declares its
@@ -81,6 +84,15 @@ export const WORKSPACES: readonly WorkspaceDef[] = [
         left: MeshNodePanel,
         center: MeshViewportPanel,
         right: MeshGraphPanel,
+        showAssetBrowser: false,
+    },
+    {
+        id: 'material',
+        label: 'Material',
+        icon: Palette,
+        left: MaterialPresetPanel,
+        center: MaterialViewportPanel,
+        right: MaterialInspectorPanel,
         showAssetBrowser: false,
     },
 ];
