@@ -5,9 +5,11 @@ import WidgetCanvas from './WidgetCanvas.vue';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import { useUiEditorStore } from '@/stores/uiEditor';
 import { useToast } from '@/composables/useToast';
+import { useDialog } from '@/composables/useDialog';
 
 const store = useUiEditorStore();
 const { addToast } = useToast();
+const { prompt, confirm } = useDialog();
 
 // 'preview' = WYSIWYG engine render (unfilled); 'tree' = editable node tree.
 const viewMode = ref<'preview' | 'tree'>('preview');
@@ -20,7 +22,15 @@ onMounted(() => {
 async function onSelectLayout(e: Event) {
     const name = (e.target as HTMLSelectElement).value;
     if (!name || name === store.name) return;
-    if (store.dirty && !confirm('Unsaved changes will be lost. Continue?')) {
+    if (
+        store.dirty &&
+        !(await confirm({
+            title: 'Unsaved changes',
+            message: 'Unsaved changes will be lost. Continue?',
+            confirmLabel: 'Discard & switch',
+            danger: true,
+        }))
+    ) {
         (e.target as HTMLSelectElement).value = store.name;
         return;
     }
@@ -32,7 +42,7 @@ async function onSelectLayout(e: Event) {
 }
 
 async function newLayout() {
-    const name = window.prompt('New UI layout name:');
+    const name = await prompt({ title: 'New UI layout', message: 'Layout name:', placeholder: 'main_menu' });
     if (!name) return;
     try {
         await store.create(name);

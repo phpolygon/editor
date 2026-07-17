@@ -1,10 +1,41 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed } from 'vue';
+import {
+    FolderOpen,
+    FolderInput,
+    History,
+    Play,
+    Square,
+    RotateCw,
+    FilePlus2,
+    Save,
+    Undo2,
+    Redo2,
+    Plus,
+    Package,
+    Box,
+    Circle,
+    Cylinder,
+    Square as SquareIcon,
+    Image,
+    SquareDashed,
+} from 'lucide-vue-next';
 import { useSceneStore } from '@/stores/scene';
 import { useEditorStore } from '@/stores/editor';
 import { useProjectStore } from '@/stores/project';
 import { useSelectionStore } from '@/stores/selection';
 import { useToast } from '@/composables/useToast';
+import { useDialog } from '@/composables/useDialog';
+import { WORKSPACES } from '@/workspaces';
+import Button from '@/components/ui/Button.vue';
+import IconButton from '@/components/ui/IconButton.vue';
+import SegmentedControl from '@/components/ui/SegmentedControl.vue';
+import Select from '@/components/ui/Select.vue';
+import Menu from '@/components/ui/Menu.vue';
+import MenuItem from '@/components/ui/MenuItem.vue';
+import MenuLabel from '@/components/ui/MenuLabel.vue';
+import MenuSeparator from '@/components/ui/MenuSeparator.vue';
+import ToolbarGroup from '@/components/ui/ToolbarGroup.vue';
 import type { PrimitiveType } from '@/bridge/commands';
 
 const sceneStore = useSceneStore();
@@ -12,32 +43,28 @@ const editorStore = useEditorStore();
 const projectStore = useProjectStore();
 const selectionStore = useSelectionStore();
 const { addToast } = useToast();
+const { prompt, confirm } = useDialog();
 
-const createMenuOpen = ref(false);
-const recentMenuOpen = ref(false);
+const workspaceOptions = computed(() =>
+    WORKSPACES.map((w) => ({ value: w.id, label: w.label, icon: w.icon, title: w.label })),
+);
 
-// Delay closing dropdowns on blur so a click on a menu item registers first.
-// (setTimeout isn't available inside Vue template expressions.)
-function closeRecentSoon() {
-    window.setTimeout(() => (recentMenuOpen.value = false), 120);
-}
-function closeCreateSoon() {
-    window.setTimeout(() => (createMenuOpen.value = false), 120);
-}
+const modeOptions = [
+    { value: '2d' as const, label: '2D', title: '2D scene mode' },
+    { value: '3d' as const, label: '3D', title: '3D scene mode' },
+];
 
-async function toggleRecentMenu() {
-    if (!recentMenuOpen.value) {
-        try {
-            await projectStore.fetchRecent();
-        } catch {
-            // Non-fatal — just show whatever is cached.
-        }
+const sceneOptions = computed(() => sceneStore.sceneList.map((s) => ({ value: s, label: s })));
+
+async function loadRecent() {
+    try {
+        await projectStore.fetchRecent();
+    } catch {
+        // Non-fatal — show whatever is cached.
     }
-    recentMenuOpen.value = !recentMenuOpen.value;
 }
 
 async function openRecent(dir: string, name: string) {
-    recentMenuOpen.value = false;
     try {
         await projectStore.openRecent(dir);
         addToast(`Project "${projectStore.name}" opened`, 'success');
@@ -47,7 +74,6 @@ async function openRecent(dir: string, name: string) {
 }
 
 async function addPrimitive(type: PrimitiveType) {
-    createMenuOpen.value = false;
     try {
         const name = await sceneStore.createPrimitive(type, selectionStore.selectedEntity ?? null);
         selectionStore.selectEntity(name);
@@ -58,10 +84,8 @@ async function addPrimitive(type: PrimitiveType) {
 }
 
 async function addEmpty() {
-    createMenuOpen.value = false;
-    const name = 'Entity';
     try {
-        await sceneStore.createEntity(name, selectionStore.selectedEntity ?? null);
+        await sceneStore.createEntity('Entity', selectionStore.selectedEntity ?? null);
         addToast('Added empty entity', 'success');
     } catch (e: any) {
         addToast(e?.message ?? 'Failed to add entity', 'error');
@@ -69,7 +93,6 @@ async function addEmpty() {
 }
 
 async function addSprite() {
-    createMenuOpen.value = false;
     try {
         const name = await sceneStore.createSprite(selectionStore.selectedEntity ?? null);
         selectionStore.selectEntity(name);
@@ -82,10 +105,15 @@ async function addSprite() {
 async function saveAsPrefab() {
     const selected = selectionStore.selectedEntity;
     if (!selected) return;
-    const suggested = window.prompt('Prefab name:', selected);
-    if (suggested === null) return;
+    const name = await prompt({
+        title: 'Save as prefab',
+        message: 'Name for the reusable prefab:',
+        value: selected,
+        placeholder: 'prefab_name',
+    });
+    if (name === null) return;
     try {
-        const result = await sceneStore.savePrefab(selected, suggested || null);
+        const result = await sceneStore.savePrefab(selected, name || null);
         addToast(`Saved prefab: ${result.name}`, 'success');
     } catch (e: any) {
         addToast(e?.message ?? 'Failed to save prefab', 'error');
@@ -93,11 +121,7 @@ async function saveAsPrefab() {
 }
 
 function togglePlay() {
-    if (editorStore.playing) {
-        editorStore.stop();
-    } else {
-        editorStore.play();
-    }
+    editorStore.playing ? editorStore.stop() : editorStore.play();
 }
 
 async function rebuild() {
@@ -137,7 +161,11 @@ async function importProject() {
 }
 
 async function newScene() {
-    const name = window.prompt('New scene name (e.g. main_level):');
+    const name = await prompt({
+        title: 'New scene',
+        message: 'Scene name (authored in the editor, saved as PHP):',
+        placeholder: 'main_level',
+    });
     if (!name) return;
     try {
         await sceneStore.createScene(name);
@@ -156,24 +184,19 @@ async function save() {
     }
 }
 
-async function undo() {
-    await sceneStore.undoAction();
-}
-
-async function redo() {
-    await sceneStore.redoAction();
-}
-
-async function switchScene(e: Event) {
-    const sceneName = (e.target as HTMLSelectElement).value;
+async function switchScene(sceneName: string) {
     if (!sceneName || sceneName === sceneStore.name) return;
-
-    if (sceneStore.dirty && !confirm('You have unsaved changes. Continue?')) {
-        // Reset select to current scene
-        (e.target as HTMLSelectElement).value = sceneStore.name;
+    if (
+        sceneStore.dirty &&
+        !(await confirm({
+            title: 'Unsaved changes',
+            message: 'You have unsaved changes that will be lost. Continue?',
+            confirmLabel: 'Discard & switch',
+            danger: true,
+        }))
+    ) {
         return;
     }
-
     try {
         await sceneStore.load(sceneName);
         addToast(`Scene "${sceneName}" loaded`, 'success');
@@ -184,277 +207,166 @@ async function switchScene(e: Event) {
 </script>
 
 <template>
-    <div class="flex items-center gap-1 px-2 h-9 bg-editor-panel border-b border-editor-border shrink-0">
-        <!-- Open Project -->
-        <button
-            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active"
-            @click="openProject"
-        >
-            Open Project
-        </button>
-
-        <!-- Import Project -->
-        <button
-            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active"
-            title="Create the editor manifest for an existing PHPolygon project folder"
-            @click="importProject"
-        >
-            Import Project
-        </button>
-
-        <!-- Recent Projects dropdown -->
-        <div class="relative">
-            <button
-                class="px-1.5 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active"
-                title="Recent projects"
-                @click="toggleRecentMenu"
-                @blur="closeRecentSoon"
+    <div class="flex items-center gap-1 px-2 h-11 bg-editor-panel border-b border-editor-border shrink-0">
+        <!-- Project -->
+        <ToolbarGroup>
+            <Button :icon="FolderOpen" @click="openProject">Open</Button>
+            <Button
+                :icon="FolderInput"
+                title="Create the editor manifest for an existing PHPolygon project folder"
+                @click="importProject"
             >
-                Recent ▾
-            </button>
-            <div
-                v-if="recentMenuOpen"
-                class="absolute left-0 top-full mt-1 z-50 bg-editor-panel border border-editor-border rounded shadow-lg min-w-[240px] max-w-[420px] py-1"
+                Import
+            </Button>
+            <Menu align="left" width="min-w-[260px] max-w-[440px]">
+                <template #trigger="{ toggle }">
+                    <IconButton
+                        :icon="History"
+                        label="Recent projects"
+                        @click="() => { loadRecent(); toggle(); }"
+                    />
+                </template>
+                <template #default="{ close }">
+                    <MenuLabel>Recent projects</MenuLabel>
+                    <div v-if="projectStore.recent.length === 0" class="px-3 py-2 text-xs text-editor-muted">
+                        No recent projects
+                    </div>
+                    <MenuItem
+                        v-for="r in projectStore.recent"
+                        :key="r.dir"
+                        :icon="FolderOpen"
+                        @click="() => { openRecent(r.dir, r.name); close(); }"
+                    >
+                        <span class="block truncate">{{ r.name }}</span>
+                        <span class="block text-[10px] text-editor-muted truncate" dir="rtl">{{ r.dir }}</span>
+                    </MenuItem>
+                </template>
+            </Menu>
+        </ToolbarGroup>
+
+        <!-- Workspace switcher -->
+        <ToolbarGroup>
+            <SegmentedControl
+                :model-value="editorStore.workspace"
+                :options="workspaceOptions"
+                @update:model-value="editorStore.setWorkspace"
+            />
+        </ToolbarGroup>
+
+        <!-- Play + rebuild -->
+        <ToolbarGroup :divider="editorStore.workspace === 'scene'">
+            <Button
+                :icon="editorStore.playing ? Square : Play"
+                :variant="editorStore.playing ? 'danger' : 'success'"
+                @click="togglePlay"
             >
-                <div
-                    v-if="projectStore.recent.length === 0"
-                    class="px-3 py-2 text-xs text-editor-muted"
-                >
-                    No recent projects
-                </div>
-                <button
-                    v-for="r in projectStore.recent"
-                    :key="r.dir"
-                    class="w-full text-left px-3 py-1 hover:bg-editor-hover"
-                    :title="r.dir"
-                    @mousedown.prevent="openRecent(r.dir, r.name)"
-                >
-                    <div class="text-xs truncate">{{ r.name }}</div>
-                    <div class="text-[10px] text-editor-muted truncate" dir="rtl">{{ r.dir }}</div>
-                </button>
-            </div>
-        </div>
+                {{ editorStore.playing ? 'Stop' : 'Play' }}
+            </Button>
+            <IconButton
+                v-if="editorStore.workspace === 'scene'"
+                :icon="RotateCw"
+                label="Rebuild: reload the scene from PHP (re-runs build(), re-captures meshes/materials)"
+                :disabled="sceneStore.loading || !sceneStore.name"
+                @click="rebuild"
+            />
+        </ToolbarGroup>
 
-        <div class="w-px h-5 bg-editor-border mx-1" />
-
-        <!-- Workspace: Scene / UI -->
-        <div class="inline-flex rounded border border-editor-border overflow-hidden">
-            <button
-                class="px-2 py-0.5 text-xs"
-                :class="editorStore.workspace === 'scene' ? 'bg-editor-accent text-white' : 'hover:bg-editor-hover'"
-                @click="editorStore.setWorkspace('scene')"
-            >
-                Scene
-            </button>
-            <button
-                class="px-2 py-0.5 text-xs"
-                :class="editorStore.workspace === 'ui' ? 'bg-editor-accent text-white' : 'hover:bg-editor-hover'"
-                @click="editorStore.setWorkspace('ui')"
-            >
-                UI
-            </button>
-            <button
-                class="px-2 py-0.5 text-xs"
-                :class="editorStore.workspace === 'panel' ? 'bg-editor-accent text-white' : 'hover:bg-editor-hover'"
-                @click="editorStore.setWorkspace('panel')"
-            >
-                Panels
-            </button>
-        </div>
-
-        <div class="w-px h-5 bg-editor-border mx-1" />
-
-        <!-- Play / Stop -->
-        <button
-            class="px-3 py-1 text-xs font-medium rounded"
-            :class="editorStore.playing
-                ? 'bg-red-600 hover:bg-red-700 text-white'
-                : 'bg-green-600 hover:bg-green-700 text-white'"
-            @click="togglePlay"
-        >
-            {{ editorStore.playing ? 'Stop' : 'Play' }}
-        </button>
-
-        <!-- Rebuild: re-run the current scene's PHP build() + re-capture assets,
-             so several code changes can be applied at once, on demand. -->
-        <button
-            v-if="editorStore.workspace === 'scene'"
-            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
-            :disabled="sceneStore.loading || !sceneStore.name"
-            title="Rebuild: reload the current scene from PHP (re-runs build(), re-captures meshes/materials)"
-            @click="rebuild"
-        >
-            ⟳ Rebuild
-        </button>
-
+        <!-- Scene-only controls -->
         <template v-if="editorStore.workspace === 'scene'">
-        <div class="w-px h-5 bg-editor-border mx-1" />
-
-        <!-- New Scene -->
-        <button
-            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
-            :disabled="!projectStore.opened"
-            title="Create a new scene (authored in the editor, saved as PHP)"
-            @click="newScene"
-        >
-            New Scene
-        </button>
-
-        <!-- Save -->
-        <button
-            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
-            :disabled="sceneStore.loading || !sceneStore.name"
-            @click="save"
-        >
-            Save
-        </button>
-
-        <!-- Undo / Redo -->
-        <button
-            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
-            :disabled="sceneStore.loading || !sceneStore.name"
-            @click="undo"
-        >
-            Undo
-        </button>
-        <button
-            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
-            :disabled="sceneStore.loading || !sceneStore.name"
-            @click="redo"
-        >
-            Redo
-        </button>
-
-        <div class="w-px h-5 bg-editor-border mx-1" />
-
-        <!-- Scene selector -->
-        <template v-if="projectStore.opened && sceneStore.sceneList.length > 0">
-            <select
-                class="bg-editor-input border border-editor-border text-editor-text text-xs rounded px-1 py-0.5 focus:border-editor-accent focus:outline-none"
-                :value="sceneStore.name"
-                @change="switchScene"
-            >
-                <option value="" disabled>Select scene...</option>
-                <option v-for="s in sceneStore.sceneList" :key="s" :value="s">
-                    {{ s }}
-                </option>
-            </select>
-        </template>
-        <span v-else class="text-xs text-editor-muted">
-            {{ sceneStore.name || 'No scene' }}
-        </span>
-
-        <span
-            v-if="sceneStore.dirty"
-            class="w-2 h-2 rounded-full bg-editor-accent shrink-0"
-            title="Unsaved changes"
-        />
-
-        <div class="w-px h-5 bg-editor-border mx-1" />
-
-        <!-- Create dropdown -->
-        <div class="relative">
-            <button
-                class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
-                :disabled="!sceneStore.name"
-                @click="createMenuOpen = !createMenuOpen"
-                @blur="closeCreateSoon"
-            >
-                + Create
-            </button>
-            <div
-                v-if="createMenuOpen"
-                class="absolute left-0 top-full mt-1 z-50 bg-editor-panel border border-editor-border rounded shadow-lg min-w-[160px] py-1"
-            >
-                <button
-                    class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                    @mousedown.prevent="addEmpty"
+            <ToolbarGroup>
+                <Button
+                    :icon="FilePlus2"
+                    :disabled="!projectStore.opened"
+                    title="Create a new scene"
+                    @click="newScene"
                 >
-                    Empty Entity
-                </button>
+                    New Scene
+                </Button>
+                <IconButton
+                    :icon="Save"
+                    label="Save scene (Ctrl+S)"
+                    :disabled="sceneStore.loading || !sceneStore.name"
+                    @click="save"
+                />
+                <IconButton
+                    :icon="Undo2"
+                    label="Undo (Ctrl+Z)"
+                    :disabled="sceneStore.loading || !sceneStore.name"
+                    @click="sceneStore.undoAction()"
+                />
+                <IconButton
+                    :icon="Redo2"
+                    label="Redo (Ctrl+Shift+Z)"
+                    :disabled="sceneStore.loading || !sceneStore.name"
+                    @click="sceneStore.redoAction()"
+                />
+            </ToolbarGroup>
 
-                <!-- 2D content -->
-                <template v-if="sceneStore.mode === '2d'">
-                    <div class="border-t border-editor-border my-1" />
-                    <div class="px-3 py-0.5 text-[10px] text-editor-muted uppercase tracking-wide">2D</div>
-                    <button
-                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                        @mousedown.prevent="addSprite"
-                    >
-                        Sprite
-                    </button>
-                </template>
+            <!-- Scene selector -->
+            <ToolbarGroup>
+                <Select
+                    v-if="projectStore.opened && sceneStore.sceneList.length > 0"
+                    :model-value="sceneStore.name"
+                    :options="sceneOptions"
+                    placeholder="Select scene…"
+                    @update:model-value="switchScene"
+                />
+                <span v-else class="text-xs text-editor-muted px-1">{{ sceneStore.name || 'No scene' }}</span>
+                <span
+                    v-if="sceneStore.dirty"
+                    class="w-2 h-2 rounded-full bg-editor-accent shrink-0"
+                    title="Unsaved changes"
+                />
+            </ToolbarGroup>
 
-                <!-- 3D primitives -->
-                <template v-else>
-                    <div class="border-t border-editor-border my-1" />
-                    <div class="px-3 py-0.5 text-[10px] text-editor-muted uppercase tracking-wide">3D Primitive</div>
-                    <button
-                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                        @mousedown.prevent="addPrimitive('box')"
-                    >
-                        Box
-                    </button>
-                    <button
-                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                        @mousedown.prevent="addPrimitive('sphere')"
-                    >
-                        Sphere
-                    </button>
-                    <button
-                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                        @mousedown.prevent="addPrimitive('cylinder')"
-                    >
-                        Cylinder
-                    </button>
-                    <button
-                        class="w-full text-left px-3 py-1 text-xs hover:bg-editor-hover"
-                        @mousedown.prevent="addPrimitive('plane')"
-                    >
-                        Plane
-                    </button>
-                </template>
-            </div>
-        </div>
+            <!-- Create + prefab -->
+            <ToolbarGroup>
+                <Menu align="left" width="min-w-[180px]">
+                    <template #trigger="{ toggle }">
+                        <Button :icon="Plus" :disabled="!sceneStore.name" @click="toggle">Create</Button>
+                    </template>
+                    <template #default="{ close }">
+                        <MenuItem :icon="SquareDashed" @click="() => { addEmpty(); close(); }">
+                            Empty Entity
+                        </MenuItem>
+                        <template v-if="sceneStore.mode === '2d'">
+                            <MenuSeparator />
+                            <MenuLabel>2D</MenuLabel>
+                            <MenuItem :icon="Image" @click="() => { addSprite(); close(); }">Sprite</MenuItem>
+                        </template>
+                        <template v-else>
+                            <MenuSeparator />
+                            <MenuLabel>3D Primitive</MenuLabel>
+                            <MenuItem :icon="Box" @click="() => { addPrimitive('box'); close(); }">Box</MenuItem>
+                            <MenuItem :icon="Circle" @click="() => { addPrimitive('sphere'); close(); }">Sphere</MenuItem>
+                            <MenuItem :icon="Cylinder" @click="() => { addPrimitive('cylinder'); close(); }">Cylinder</MenuItem>
+                            <MenuItem :icon="SquareIcon" @click="() => { addPrimitive('plane'); close(); }">Plane</MenuItem>
+                        </template>
+                    </template>
+                </Menu>
+                <Button
+                    :icon="Package"
+                    :disabled="!selectionStore.selectedEntity"
+                    :title="selectionStore.selectedEntity ? 'Save selection as prefab' : 'Select an entity first'"
+                    @click="saveAsPrefab"
+                >
+                    Prefab
+                </Button>
+            </ToolbarGroup>
 
-        <button
-            class="px-2 py-1 text-xs rounded hover:bg-editor-hover active:bg-editor-active disabled:opacity-40"
-            :disabled="!selectionStore.selectedEntity"
-            :title="selectionStore.selectedEntity ? 'Save selection as prefab' : 'Select an entity first'"
-            @click="saveAsPrefab"
-        >
-            Save Prefab
-        </button>
-
-        <div class="w-px h-5 bg-editor-border mx-1" />
-
-        <!-- 2D/3D mode toggle -->
-        <div class="inline-flex rounded border border-editor-border overflow-hidden">
-            <button
-                class="px-2 py-0.5 text-xs"
-                :class="sceneStore.mode === '2d'
-                    ? 'bg-editor-accent text-white'
-                    : 'hover:bg-editor-hover'"
-                :disabled="!sceneStore.name"
-                @click="sceneStore.setMode('2d')"
-            >
-                2D
-            </button>
-            <button
-                class="px-2 py-0.5 text-xs"
-                :class="sceneStore.mode === '3d'
-                    ? 'bg-editor-accent text-white'
-                    : 'hover:bg-editor-hover'"
-                :disabled="!sceneStore.name"
-                @click="sceneStore.setMode('3d')"
-            >
-                3D
-            </button>
-        </div>
+            <!-- 2D / 3D mode -->
+            <ToolbarGroup :divider="false">
+                <SegmentedControl
+                    :model-value="sceneStore.mode"
+                    :options="modeOptions"
+                    :disabled="!sceneStore.name"
+                    @update:model-value="sceneStore.setMode"
+                />
+            </ToolbarGroup>
         </template>
 
         <div class="flex-1" />
 
-        <span class="text-xs text-editor-muted">PHPolygon Editor</span>
+        <span class="text-xs font-medium text-editor-muted pr-1">PHPolygon Editor</span>
     </div>
 </template>

@@ -31,18 +31,17 @@ test('happy path: open project → load scene → create primitive → save pref
     await expect(page.getByText('CameraRig')).toBeVisible();
     await expect(page.getByText('Origin')).toBeVisible();
 
-    // Open the Create dropdown and add a Box primitive.
-    await page.getByRole('button', { name: '+ Create' }).click();
-    await page.getByRole('button', { name: 'Box', exact: true }).click();
+    // Open the Create dropdown (menu) and add a Box primitive.
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.getByRole('menuitem', { name: 'Box', exact: true }).click();
     await expect(page.getByText('Added box')).toBeVisible({ timeout: 5_000 });
     await expect(page.getByRole('heading', { name: /Box/ }).or(page.getByText('Box', { exact: true }))).toBeVisible();
 
-    // Save Prefab — handle the window.prompt dialog.
-    page.once('dialog', (dialog) => {
-        expect(dialog.type()).toBe('prompt');
-        return dialog.accept('TestPrefab');
-    });
-    await page.getByRole('button', { name: 'Save Prefab' }).click();
+    // Save as prefab — fill the in-app dialog (replaced the native window.prompt).
+    await page.getByRole('button', { name: 'Prefab' }).click();
+    const prefabDialog = page.getByRole('dialog');
+    await prefabDialog.getByRole('textbox').fill('TestPrefab');
+    await prefabDialog.getByRole('button', { name: 'OK' }).click();
 
     await expect(page.getByText(/Saved prefab: TestPrefab/i)).toBeVisible({ timeout: 5_000 });
 

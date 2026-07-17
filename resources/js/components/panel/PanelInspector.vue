@@ -2,8 +2,10 @@
 import { computed } from 'vue';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import { usePanelEditorStore } from '@/stores/panelEditor';
+import { useDialog } from '@/composables/useDialog';
 
 const store = usePanelEditorStore();
+const { prompt } = useDialog();
 const RECT = ['x', 'y', 'width', 'height'];
 
 const el = computed(() => store.selectedElement);
@@ -28,9 +30,9 @@ function setStr(key: string, e: Event) {
     store.updateElement(id.value, { [key]: (e.target as HTMLInputElement).value });
 }
 
-function addProp() {
+async function addProp() {
     if (!id.value) return;
-    const key = window.prompt('Property name (e.g. label, style):');
+    const key = await prompt({ title: 'Add property', message: 'Property name:', placeholder: 'label' });
     if (!key || RECT.includes(key)) return;
     store.updateElement(id.value, { [key.trim()]: '' });
 }

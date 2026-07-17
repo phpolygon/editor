@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import { usePanelEditorStore } from '@/stores/panelEditor';
 import { useToast } from '@/composables/useToast';
+import { useDialog } from '@/composables/useDialog';
 import type { PanelElement } from '@/bridge/commands';
 
 const DESIGN_W = 1280;
@@ -10,6 +11,7 @@ const DESIGN_H = 720;
 
 const store = usePanelEditorStore();
 const { addToast } = useToast();
+const { prompt, confirm } = useDialog();
 
 const viewport = ref<HTMLDivElement | null>(null);
 const scale = ref(0.5);
@@ -115,7 +117,15 @@ async function endDrag() {
 async function onSelectLayout(e: Event) {
     const name = (e.target as HTMLSelectElement).value;
     if (!name || name === store.name) return;
-    if (store.dirty && !confirm('Unsaved changes will be lost. Continue?')) {
+    if (
+        store.dirty &&
+        !(await confirm({
+            title: 'Unsaved changes',
+            message: 'Unsaved changes will be lost. Continue?',
+            confirmLabel: 'Discard & switch',
+            danger: true,
+        }))
+    ) {
         (e.target as HTMLSelectElement).value = store.name;
         return;
     }
@@ -127,7 +137,7 @@ async function onSelectLayout(e: Event) {
 }
 
 async function newLayout() {
-    const name = window.prompt('New panel layout name:');
+    const name = await prompt({ title: 'New panel layout', message: 'Layout name:', placeholder: 'main_hud' });
     if (!name) return;
     try {
         await store.create(name);

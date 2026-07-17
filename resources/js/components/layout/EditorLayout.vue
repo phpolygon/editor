@@ -1,18 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, provide, ref } from 'vue';
+import { computed, onMounted, onUnmounted, provide, ref } from 'vue';
 import Toolbar from './Toolbar.vue';
-import HierarchyPanel from '@/components/hierarchy/HierarchyPanel.vue';
-import InspectorPanel from '@/components/inspector/InspectorPanel.vue';
-import SceneViewPanel from '@/components/scene/SceneViewPanel.vue';
+import WelcomeScreen from './WelcomeScreen.vue';
 import AssetBrowserPanel from '@/components/assets/AssetBrowserPanel.vue';
-import UiHierarchyPanel from '@/components/ui/UiHierarchyPanel.vue';
-import UiInspectorPanel from '@/components/ui/UiInspectorPanel.vue';
-import UiViewportPanel from '@/components/ui/UiViewportPanel.vue';
-import PanelElementList from '@/components/panel/PanelElementList.vue';
-import PanelInspector from '@/components/panel/PanelInspector.vue';
-import PanelLayoutCanvas from '@/components/panel/PanelLayoutCanvas.vue';
 import ToastContainer from '@/components/ui/ToastContainer.vue';
+import DialogHost from '@/components/ui/DialogHost.vue';
 import ContextMenu from '@/components/ui/ContextMenu.vue';
+import { getWorkspace } from '@/workspaces';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { useToast } from '@/composables/useToast';
 import { useSceneStore } from '@/stores/scene';
@@ -25,6 +19,9 @@ const selectionStore = useSelectionStore();
 const projectStore = useProjectStore();
 const editorStore = useEditorStore();
 const { addToast } = useToast();
+
+// Resolve the active workspace's panel components from the registry.
+const activeWorkspace = computed(() => getWorkspace(editorStore.workspace));
 
 // F2 rename trigger: hierarchy nodes watch this ref
 const renameTriggerId = ref(0);
@@ -84,36 +81,39 @@ onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
         <!-- Toolbar -->
         <Toolbar />
 
-        <!-- Main grid: hierarchy | scene | inspector -->
-        <div class="flex-1 grid grid-cols-[250px_1fr_300px] grid-rows-[1fr_200px] min-h-0">
-            <!-- Hierarchy (left, spans both rows) -->
+        <!-- No project yet → friendly landing instead of empty panels. -->
+        <WelcomeScreen v-if="!projectStore.opened" />
+
+        <!-- Main grid: left sidebar | viewport (+ asset browser) | right sidebar.
+             Panels are resolved from the active workspace in the registry. -->
+        <div
+            v-else
+            class="flex-1 grid grid-cols-[250px_1fr_300px] min-h-0"
+            :class="activeWorkspace.showAssetBrowser === false ? 'grid-rows-[1fr]' : 'grid-rows-[1fr_200px]'"
+        >
+            <!-- Left sidebar (spans both rows) -->
             <div class="row-span-2 border-r border-editor-border overflow-hidden">
-                <PanelElementList v-if="editorStore.workspace === 'panel'" />
-                <UiHierarchyPanel v-else-if="editorStore.workspace === 'ui'" />
-                <HierarchyPanel v-else />
+                <component :is="activeWorkspace.left" />
             </div>
 
             <!-- Viewport (center top) -->
             <div class="border-b border-editor-border overflow-hidden">
-                <PanelLayoutCanvas v-if="editorStore.workspace === 'panel'" />
-                <UiViewportPanel v-else-if="editorStore.workspace === 'ui'" />
-                <SceneViewPanel v-else />
+                <component :is="activeWorkspace.center" />
             </div>
 
-            <!-- Inspector (right, spans both rows) -->
+            <!-- Right sidebar (spans both rows) -->
             <div class="row-span-2 border-l border-editor-border overflow-hidden">
-                <PanelInspector v-if="editorStore.workspace === 'panel'" />
-                <UiInspectorPanel v-else-if="editorStore.workspace === 'ui'" />
-                <InspectorPanel v-else />
+                <component :is="activeWorkspace.right" />
             </div>
 
-            <!-- Asset browser (center bottom) -->
-            <div class="overflow-hidden">
+            <!-- Asset browser (center bottom, shared across workspaces) -->
+            <div v-if="activeWorkspace.showAssetBrowser !== false" class="overflow-hidden">
                 <AssetBrowserPanel />
             </div>
         </div>
 
         <ToastContainer />
+        <DialogHost />
         <ContextMenu />
     </div>
 </template>

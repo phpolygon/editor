@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { ApiError, get, post } from '@/bridge/api';
 import { useSceneStore } from './scene';
+import { useDialog } from '@/composables/useDialog';
 
 interface ProjectData {
     manifest: {
@@ -82,7 +83,11 @@ export const useProjectStore = defineStore('project', () => {
             // Backend returns 503 + fallback hint; fall back to a path
             // prompt so the editor still works in the browser.
             if (e instanceof ApiError && (e.body as { fallback?: string } | undefined)?.fallback === 'path-input') {
-                const dir = window.prompt('Path to PHPolygon project directory:');
+                const dir = await useDialog().prompt({
+                    title: 'Open project',
+                    message: 'Path to the PHPolygon project directory:',
+                    placeholder: 'D:\\path\\to\\project',
+                });
                 if (!dir) throw new Error('No directory selected');
                 await openProject(dir);
                 return;
@@ -128,7 +133,11 @@ export const useProjectStore = defineStore('project', () => {
             // Web-only runs (composer dev) have no NativePHP bridge; fall back
             // to a path prompt, mirroring openProjectWithDialog.
             if (e instanceof ApiError && (e.body as { fallback?: string } | undefined)?.fallback === 'path-input') {
-                const dir = window.prompt('Path to PHPolygon project directory to import:');
+                const dir = await useDialog().prompt({
+                    title: 'Import project',
+                    message: 'Path to the PHPolygon project directory to import:',
+                    placeholder: 'D:\\path\\to\\project',
+                });
                 if (!dir) throw new Error('No directory selected');
                 return await importProject(dir);
             }

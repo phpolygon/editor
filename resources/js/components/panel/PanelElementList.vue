@@ -2,12 +2,14 @@
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import { usePanelEditorStore } from '@/stores/panelEditor';
 import { useToast } from '@/composables/useToast';
+import { useDialog } from '@/composables/useDialog';
 
 const store = usePanelEditorStore();
 const { addToast } = useToast();
+const { prompt } = useDialog();
 
 async function add() {
-    const id = window.prompt('Element id (e.g. play_button):');
+    const id = await prompt({ title: 'Add element', message: 'Element id:', placeholder: 'play_button' });
     if (!id) return;
     try {
         await store.addElement(id.trim());
@@ -17,7 +19,7 @@ async function add() {
 }
 
 async function rename(oldId: string) {
-    const next = window.prompt('Rename element:', oldId);
+    const next = await prompt({ title: 'Rename element', value: oldId });
     if (!next || next === oldId) return;
     try {
         await store.renameElement(oldId, next.trim());

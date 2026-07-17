@@ -70,7 +70,9 @@ npm run build
 
 **Inspector field editors** (`resources/js/components/inspector/fields/`) — Each property type (string, int, float, bool, vec2, vec3, color, angle, slider, asset) has a dedicated Vue component. New ECS property types need a corresponding field editor.
 
-**Layout** — EditorLayout is a CSS grid: hierarchy panel (left), scene view + asset browser (center), inspector (right), toolbar (top).
+**Layout** — EditorLayout is a CSS grid: left sidebar, viewport + asset browser (center), right sidebar, toolbar (top). The three panel zones are filled from a data-driven **workspace registry** (`resources/js/workspaces.ts`) — add a new workspace (e.g. a tool tab) as a single entry there instead of editing `v-if` chains in `EditorLayout.vue`/`Toolbar.vue`.
+
+**Design system** (`resources/js/components/ui/`) — reusable primitives: `Button`, `IconButton`, `SegmentedControl`, `Menu`(+`MenuItem`/`MenuLabel`/`MenuSeparator`), `Modal`, `Select`, `EmptyState`, `ToolbarGroup`. Build new UI from these + Lucide icons (`lucide-vue-next`), not hand-rolled markup. For prompts/confirms use `useDialog()` (`composables/useDialog.ts`) rendered by the global `<DialogHost>`, never `window.prompt/confirm`.
 
 ### Data Flow
 
@@ -88,7 +90,7 @@ Game projects use `phpolygon.project.json` as their manifest. The editor reads P
 
 - PHP 8.2+ with strict types. Autoloaded via PSR-4.
 - TypeScript strict mode. Path alias `@` → `resources/js/`.
-- Tailwind CSS with VS Code dark theme colors (defined in `tailwind.config.js`).
-- Dark mode only (class-based).
+- Tailwind CSS **v4**. Design tokens (colors, fonts) live in a single `@theme` block in `resources/css/app.css` — this is the authoritative source. There is no `tailwind.config.js` (the `@tailwindcss/vite` plugin doesn't load one without an explicit `@config`). Modern cool-neutral dark theme with explicit elevation layers (`editor-bg` → `editor-panel` → `editor-elevated`).
+- Dark mode only.
 - Indent: 4 spaces (2 for YAML). LF line endings.
 - Tests for editor core logic live in `tests/Editor/`, mirroring `src/` structure.

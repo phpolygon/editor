@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { MousePointerClick } from 'lucide-vue-next';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import ComponentSection from './ComponentSection.vue';
 import AddComponentMenu from './AddComponentMenu.vue';
+import EmptyState from '@/components/ui/EmptyState.vue';
 import { useSelectionStore } from '@/stores/selection';
 import { useSceneStore } from '@/stores/scene';
 import { useComponentsStore } from '@/stores/components';
@@ -35,9 +37,13 @@ const selectedEntityData = computed(() => {
                     <AddComponentMenu :entity-name="selectedEntityData.name" />
                 </div>
             </template>
-            <div v-else class="text-xs text-editor-muted p-2">
-                Select an entity to inspect
-            </div>
+            <EmptyState
+                v-else
+                :icon="MousePointerClick"
+                title="Nothing selected"
+                hint="Select an entity in the hierarchy or viewport to inspect and edit its components."
+                compact
+            />
         </div>
     </div>
 </template>

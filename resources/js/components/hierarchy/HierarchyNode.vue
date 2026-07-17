@@ -5,6 +5,7 @@ import { useSelectionStore } from '@/stores/selection';
 import { useSceneStore } from '@/stores/scene';
 import { useContextMenu } from '@/composables/useContextMenu';
 import { useToast } from '@/composables/useToast';
+import { useDialog } from '@/composables/useDialog';
 
 const props = defineProps<{
     node: EntityNode;
@@ -15,6 +16,7 @@ const selectionStore = useSelectionStore();
 const sceneStore = useSceneStore();
 const { show: showContextMenu } = useContextMenu();
 const { addToast } = useToast();
+const { prompt } = useDialog();
 
 const expanded = ref(props.node.expanded ?? true);
 const renaming = ref(false);
@@ -89,7 +91,7 @@ function onContextMenu(e: MouseEvent) {
         {
             label: 'Add Child Entity',
             action: async () => {
-                const name = prompt('Child entity name:');
+                const name = await prompt({ title: 'Add child entity', message: 'Entity name:', placeholder: 'Entity' });
                 if (name?.trim()) {
                     await sceneStore.createEntity(name.trim(), props.node.name);
                     expanded.value = true;
