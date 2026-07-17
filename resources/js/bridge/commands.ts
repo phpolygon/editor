@@ -131,6 +131,15 @@ export function listMaterialAssets(): Promise<{ materials: { id: string; path: s
     return cmd('list_material_assets', {});
 }
 
+/** Save a generated shader (GLSL + authoring graph) under assets/shaders/. */
+export function saveShader(
+    name: string,
+    glsl: string,
+    graph: unknown,
+): Promise<{ saved: boolean; name: string; path: string; relativePath: string }> {
+    return cmd('save_shader', { name, glsl, graph });
+}
+
 export function assetFileUrl(relativePath: string): string {
     return `/api/editor/assets/file?path=${encodeURIComponent(relativePath)}`;
 }

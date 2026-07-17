@@ -48,6 +48,7 @@ use PHPolygon\Editor\Command\SaveMaterialCommand;
 use PHPolygon\Editor\Command\SaveMeshCommand;
 use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SaveSceneCommand;
+use PHPolygon\Editor\Command\SaveShaderCommand;
 use PHPolygon\Editor\Command\SaveUiLayoutCommand;
 use PHPolygon\Editor\Command\SetWidgetBindingCommand;
 use PHPolygon\Editor\Command\SetWidgetEventCommand;
@@ -201,6 +202,7 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('get_material', GetMaterialCommand::class);
             $bus->register('save_material', SaveMaterialCommand::class);
             $bus->register('list_material_assets', ListMaterialAssetsCommand::class);
+            $bus->register('save_shader', SaveShaderCommand::class);
             $bus->register('create_primitive', CreatePrimitiveCommand::class);
             $bus->register('create_sprite', CreateSpriteCommand::class);
             $bus->register('save_prefab', SavePrefabCommand::class);

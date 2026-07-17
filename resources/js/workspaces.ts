@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { Boxes, LayoutTemplate, PanelsTopLeft, AudioWaveform, Shapes, Palette } from 'lucide-vue-next';
+import { Boxes, LayoutTemplate, PanelsTopLeft, AudioWaveform, Shapes, Palette, Sparkles } from 'lucide-vue-next';
 
 import HierarchyPanel from '@/components/hierarchy/HierarchyPanel.vue';
 import InspectorPanel from '@/components/inspector/InspectorPanel.vue';
@@ -19,6 +19,9 @@ import MeshGraphPanel from '@/components/mesh/MeshGraphPanel.vue';
 import MaterialPresetPanel from '@/components/material/MaterialPresetPanel.vue';
 import MaterialViewportPanel from '@/components/material/MaterialViewportPanel.vue';
 import MaterialInspectorPanel from '@/components/material/MaterialInspectorPanel.vue';
+import ShaderNodePanel from '@/components/shader/ShaderNodePanel.vue';
+import ShaderViewportPanel from '@/components/shader/ShaderViewportPanel.vue';
+import ShaderGraphPanel from '@/components/shader/ShaderGraphPanel.vue';
 
 /**
  * Data-driven registry of editing workspaces. Each workspace declares its
@@ -93,6 +96,15 @@ export const WORKSPACES: readonly WorkspaceDef[] = [
         left: MaterialPresetPanel,
         center: MaterialViewportPanel,
         right: MaterialInspectorPanel,
+        showAssetBrowser: false,
+    },
+    {
+        id: 'shader',
+        label: 'Shader',
+        icon: Sparkles,
+        left: ShaderNodePanel,
+        center: ShaderViewportPanel,
+        right: ShaderGraphPanel,
         showAssetBrowser: false,
     },
 ];
