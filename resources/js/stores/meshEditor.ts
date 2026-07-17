@@ -11,6 +11,7 @@ import {
 } from '@/prefab/graph';
 import { evaluateProceduralMesh, saveMesh, saveRawMesh, listMeshAssets, loadMeshAsset } from '@/bridge/commands';
 import { computeNormals, flipNormals, type RawMeshData } from '@/mesh/editMesh';
+import { importMeshFile } from '@/mesh/importMesh';
 import type { MeshData } from '@/types';
 
 /**
@@ -141,6 +142,14 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         if (editedMesh.value) editedMesh.value = flipNormals(editedMesh.value);
     }
 
+    /** Import an external 3D file (OBJ/STL/glTF) as an editable raw mesh. */
+    async function importFile(file: File) {
+        const raw = await importMeshFile(file);
+        editedMesh.value = raw;
+        name.value = file.name.replace(/\.[^.]+$/, '') || 'imported';
+        editMode.value = true;
+    }
+
     /** Save the current mesh — raw geometry in edit mode, otherwise the graph. */
     async function saveCurrent() {
         const meshName = name.value.trim() || 'mesh';
@@ -173,5 +182,6 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         exitEditMode,
         updateEditedVertices,
         flipEditedNormals,
+        importFile,
     };
 });

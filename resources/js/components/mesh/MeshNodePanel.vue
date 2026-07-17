@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { onMounted, type Component } from 'vue';
-import { Box, Circle, Cylinder, Square, Donut, Diamond, Triangle, Move3d, FlipHorizontal2, Combine, RotateCcw, FileBox } from 'lucide-vue-next';
+import { onMounted, ref, type Component } from 'vue';
+import { Box, Circle, Cylinder, Square, Donut, Diamond, Triangle, Move3d, FlipHorizontal2, Combine, RotateCcw, FileBox, Upload } from 'lucide-vue-next';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import Button from '@/components/ui/Button.vue';
 import { useMeshEditorStore } from '@/stores/meshEditor';
 import { useToast } from '@/composables/useToast';
+import { IMPORT_ACCEPT } from '@/mesh/importMesh';
 
 const store = useMeshEditorStore();
 const { addToast } = useToast();
+const fileInput = ref<HTMLInputElement | null>(null);
 
 onMounted(() => store.refreshAssets());
 
@@ -16,6 +18,19 @@ async function load(name: string) {
         await store.load(name);
     } catch (e: any) {
         addToast(e?.message ?? 'Failed to load mesh', 'error');
+    }
+}
+
+async function onImport(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // allow re-importing the same file
+    if (!file) return;
+    try {
+        await store.importFile(file);
+        addToast(`Imported ${file.name}`, 'success');
+    } catch (err: any) {
+        addToast(err?.message ?? 'Import failed', 'error');
     }
 }
 
@@ -67,8 +82,16 @@ const btn = 'flex items-center gap-2.5 px-2.5 h-8 rounded-md text-xs text-left t
                 </button>
             </template>
         </div>
-        <div class="p-2 border-t border-editor-border">
+        <div class="p-2 border-t border-editor-border flex flex-col gap-1">
+            <Button :icon="Upload" block @click="fileInput?.click()">Import file…</Button>
             <Button :icon="RotateCcw" block @click="store.reset()">Reset to box</Button>
+            <input
+                ref="fileInput"
+                type="file"
+                :accept="IMPORT_ACCEPT"
+                class="hidden"
+                @change="onImport"
+            />
         </div>
     </div>
 </template>
