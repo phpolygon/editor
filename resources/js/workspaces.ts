@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { Boxes, LayoutTemplate, PanelsTopLeft, AudioWaveform } from 'lucide-vue-next';
+import { Boxes, LayoutTemplate, PanelsTopLeft, AudioWaveform, Shapes } from 'lucide-vue-next';
 
 import HierarchyPanel from '@/components/hierarchy/HierarchyPanel.vue';
 import InspectorPanel from '@/components/inspector/InspectorPanel.vue';
@@ -13,6 +13,9 @@ import PanelLayoutCanvas from '@/components/panel/PanelLayoutCanvas.vue';
 import AudioPresetPanel from '@/components/audio/AudioPresetPanel.vue';
 import AudioViewportPanel from '@/components/audio/AudioViewportPanel.vue';
 import AudioInspectorPanel from '@/components/audio/AudioInspectorPanel.vue';
+import MeshNodePanel from '@/components/mesh/MeshNodePanel.vue';
+import MeshViewportPanel from '@/components/mesh/MeshViewportPanel.vue';
+import MeshGraphPanel from '@/components/mesh/MeshGraphPanel.vue';
 
 /**
  * Data-driven registry of editing workspaces. Each workspace declares its
@@ -70,6 +73,15 @@ export const WORKSPACES: readonly WorkspaceDef[] = [
         left: AudioPresetPanel,
         center: AudioViewportPanel,
         right: AudioInspectorPanel,
+    },
+    {
+        id: 'mesh',
+        label: 'Mesh',
+        icon: Shapes,
+        left: MeshNodePanel,
+        center: MeshViewportPanel,
+        right: MeshGraphPanel,
+        showAssetBrowser: false,
     },
 ];
 

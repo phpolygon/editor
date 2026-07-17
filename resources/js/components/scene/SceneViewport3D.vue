@@ -294,6 +294,9 @@ function cleanup(): void {
     orbit = null;
     if (renderer) {
         renderer.dispose();
+        // Release the GL context explicitly; dispose() alone leaves it alive,
+        // so contexts leak when switching between WebGL viewports (Scene ↔ Mesh).
+        renderer.forceContextLoss();
         renderer.domElement.remove();
         renderer = null;
     }

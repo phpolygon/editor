@@ -81,6 +81,27 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
             { key: 'subdivisions', label: 'Subdivisions', default: 1, step: 1 },
         ],
     },
+    torus: {
+        type: 'torus', label: 'Torus', category: 'generator', inputs: [], requiredInputs: [], variadic: false,
+        params: [
+            { key: 'radius', label: 'Radius', default: 1 },
+            { key: 'tube', label: 'Tube', default: 0.4 },
+            { key: 'radialSegments', label: 'Radial seg.', default: 12, step: 1 },
+            { key: 'tubularSegments', label: 'Tubular seg.', default: 24, step: 1 },
+        ],
+    },
+    octahedron: {
+        type: 'octahedron', label: 'Octahedron', category: 'generator', inputs: [], requiredInputs: [], variadic: false,
+        params: [
+            { key: 'radius', label: 'Radius', default: 1 },
+        ],
+    },
+    wedge: {
+        type: 'wedge', label: 'Wedge', category: 'generator', inputs: [], requiredInputs: [], variadic: false,
+        params: [
+            { key: 'peakZ', label: 'Peak Z', default: 0 },
+        ],
+    },
     transform: {
         type: 'transform', label: 'Transform', category: 'operator', inputs: ['mesh'], requiredInputs: ['mesh'], variadic: false,
         params: [
@@ -93,6 +114,12 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
             { key: 'sx', label: 'Scale X', default: 1 },
             { key: 'sy', label: 'Scale Y', default: 1 },
             { key: 'sz', label: 'Scale Z', default: 1 },
+        ],
+    },
+    mirror: {
+        type: 'mirror', label: 'Mirror', category: 'operator', inputs: ['mesh'], requiredInputs: ['mesh'], variadic: false,
+        params: [
+            { key: 'axis', label: 'Axis (0/1/2)', default: 0, step: 1 },
         ],
     },
     combine: {
