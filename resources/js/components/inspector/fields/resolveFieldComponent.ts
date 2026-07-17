@@ -10,6 +10,7 @@ import ColorField from './ColorField.vue';
 import SliderField from './SliderField.vue';
 import AngleField from './AngleField.vue';
 import AssetField from './AssetField.vue';
+import MaterialAssetField from './MaterialAssetField.vue';
 import NodeGraphField from './NodeGraphField.vue';
 import QuaternionField from './QuaternionField.vue';
 
@@ -20,6 +21,12 @@ import QuaternionField from './QuaternionField.vue';
  * routing lives in FieldResolver to avoid a circular import.
  */
 export function resolveFieldComponent(schema: PropertySchemaDTO): Component {
+    // Sub-typed asset hints (e.g. 'asset:material') get a dedicated picker; a
+    // bare 'asset' or unhandled 'asset:*' falls through to the generic browser.
+    if (schema.editorHint === 'asset:material') {
+        return MaterialAssetField;
+    }
+
     switch (schema.editorHint) {
         case 'nodegraph':
             return NodeGraphField;
