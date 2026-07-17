@@ -119,6 +119,18 @@ export function getMaterial(id: string): Promise<MaterialData> {
     return cmd<MaterialData>('get_material', { id });
 }
 
+/** Save an authored material (MaterialData) under assets/materials/. */
+export function saveMaterial(
+    material: MaterialData,
+): Promise<{ saved: boolean; id: string; path: string; relativePath: string }> {
+    return cmd('save_material', { material });
+}
+
+/** List materials saved to disk (assets/materials/), by id. */
+export function listMaterialAssets(): Promise<{ materials: { id: string; path: string }[] }> {
+    return cmd('list_material_assets', {});
+}
+
 export function assetFileUrl(relativePath: string): string {
     return `/api/editor/assets/file?path=${encodeURIComponent(relativePath)}`;
 }

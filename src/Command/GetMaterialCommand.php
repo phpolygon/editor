@@ -6,6 +6,7 @@ namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
 use PHPolygon\Editor\Project\ProjectAssetCache;
+use PHPolygon\Editor\Support\Path;
 use PHPolygon\Rendering\MaterialRegistry;
 use RuntimeException;
 
@@ -34,6 +35,33 @@ class GetMaterialCommand implements CommandInterface
             return $cached;
         }
 
+        // Finally, a material authored + saved in the editor lives on disk under
+        // assets/materials/. This is how a MeshRenderer references a material the
+        // editor created (which never entered a scene's runtime registry).
+        $disk = $this->loadFromDisk($context, $id);
+        if ($disk !== null) {
+            return $disk;
+        }
+
         throw new RuntimeException("Unknown material: {$id}");
+    }
+
+    /** @return array<string, mixed>|null */
+    private function loadFromDisk(EditorContext $context, string $id): ?array
+    {
+        $sanitized = preg_replace('/[^A-Za-z0-9_\-]/', '_', $id) ?? '';
+        if ($sanitized === '') {
+            return null;
+        }
+
+        $file = Path::join($context->getAssetsDir(), SaveMaterialCommand::MATERIALS_SUBDIR, $sanitized.'.material.json');
+        if (! is_file($file)) {
+            return null;
+        }
+
+        $raw = file_get_contents($file);
+        $data = $raw !== false ? json_decode($raw, true) : null;
+
+        return is_array($data) ? $data : null;
     }
 }
