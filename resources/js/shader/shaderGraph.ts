@@ -202,10 +202,12 @@ function defaultExpr(type: GlslType): string {
 }
 
 /**
- * Generate the fragment shader body (an expression for gl_FragColor's rgb).
- * Returns the full fragment shader source ready for a three.js ShaderMaterial.
+ * Emit the shared shader body: the ordered `n_<id>` statements plus the final
+ * color expression. Target-specific bits (uv/time source expressions, output)
+ * are injected via `uvExpr`/`timeExpr` so the same graph compiles to either
+ * three.js GLSL (preview) or engine GLSL (runtime).
  */
-export function generateFragmentShader(graph: ShaderGraph): string {
+function buildBody(graph: ShaderGraph, uvExpr: string, timeExpr: string): { lines: string[]; colorExpr: string } {
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
     const sourceOf = (node: string, port: string): string | null => {
         const c = graph.connections.find((c) => c.to.node === node && c.to.port === port);
@@ -220,25 +222,24 @@ export function generateFragmentShader(graph: ShaderGraph): string {
         const node = byId.get(id);
         if (!node || node.type === 'fragment') return;
 
-        // Emit dependencies first.
         for (const c of graph.connections.filter((c) => c.to.node === id)) {
             emit(c.from.node);
         }
 
         const def = SHADER_NODE_TYPES[node.type];
         const outType = def?.outputs[0]?.type ?? 'float';
-        const inExpr = (key: string, type: GlslType, fallbackParam?: string): string => {
+        const inExpr = (key: string, type: GlslType): string => {
             const src = sourceOf(id, key);
             if (src) return src;
-            const p = node.params?.[fallbackParam ?? key] ?? def?.defaults?.[fallbackParam ?? key];
+            const p = node.params?.[key] ?? def?.defaults?.[key];
             if (type === 'float') return glslFloat(typeof p === 'number' ? p : 0);
             return glslVec3(Array.isArray(p) ? p : [0, 0, 0]);
         };
 
         let expr: string;
         switch (node.type) {
-            case 'uv': expr = 'vec3(vUv, 0.0)'; break;
-            case 'time': expr = 'uTime'; break;
+            case 'uv': expr = uvExpr; break;
+            case 'time': expr = timeExpr; break;
             case 'float': expr = glslFloat(typeof node.params?.out === 'number' ? node.params.out : 0.5); break;
             case 'color': expr = glslVec3(Array.isArray(node.params?.out) ? node.params.out : [0.8, 0.8, 0.8]); break;
             case 'sin': expr = `sin(${inExpr('x', 'float')})`; break;
@@ -251,13 +252,15 @@ export function generateFragmentShader(graph: ShaderGraph): string {
         emitted.add(id);
     };
 
-    // Resolve the fragment color.
     const colorSrc = sourceOf('fragment', 'color');
-    if (colorSrc) {
-        emit(colorSrc.slice(2)); // strip "n_"
-    }
-    const colorExpr = colorSrc ?? 'vec3(0.8)';
+    if (colorSrc) emit(colorSrc.slice(2)); // strip "n_"
 
+    return { lines, colorExpr: colorSrc ?? 'vec3(0.8)' };
+}
+
+/** Fragment shader for a three.js ShaderMaterial (editor preview). */
+export function generateFragmentShader(graph: ShaderGraph): string {
+    const { lines, colorExpr } = buildBody(graph, 'vec3(vUv, 0.0)', 'uTime');
     return [
         'precision highp float;',
         'varying vec2 vUv;',
@@ -270,6 +273,7 @@ export function generateFragmentShader(graph: ShaderGraph): string {
     ].join('\n');
 }
 
+/** Vertex shader for the three.js preview. */
 export const VERTEX_SHADER = [
     'varying vec2 vUv;',
     'void main() {',
@@ -277,3 +281,58 @@ export const VERTEX_SHADER = [
     '    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
     '}',
 ].join('\n');
+
+/**
+ * Engine vertex shader (PHPolygon `unlit` interface): standard attributes +
+ * per-instance model columns, MVP transform, passes uv/world position on.
+ * `#version 150 core`, `out vec4 frag_color` — matches the OpenGL renderer's
+ * conventions; the vio backend transpiles it to SPIR-V/HLSL/MSL at runtime.
+ */
+export const ENGINE_VERTEX_SHADER = [
+    '#version 150 core',
+    'in vec3 a_position;',
+    'in vec3 a_normal;',
+    'in vec2 a_uv;',
+    'in vec4 a_instance_model_col0;',
+    'in vec4 a_instance_model_col1;',
+    'in vec4 a_instance_model_col2;',
+    'in vec4 a_instance_model_col3;',
+    'uniform mat4 u_model;',
+    'uniform mat4 u_view;',
+    'uniform mat4 u_projection;',
+    'uniform int u_use_instancing;',
+    'out vec2 v_uv;',
+    'out vec3 v_worldPos;',
+    'void main() {',
+    '    mat4 model = u_use_instancing == 1',
+    '        ? mat4(a_instance_model_col0, a_instance_model_col1, a_instance_model_col2, a_instance_model_col3)',
+    '        : u_model;',
+    '    vec4 world = model * vec4(a_position, 1.0);',
+    '    v_worldPos = world.xyz;',
+    '    v_uv = a_uv;',
+    '    gl_Position = u_projection * u_view * world;',
+    '}',
+].join('\n');
+
+/**
+ * Generate the engine shader pair (vertex + fragment) for the PHPolygon runtime
+ * (`unlit` interface). The fragment reads `v_uv`/`u_time` and writes
+ * `frag_color`. `u_time` must be fed by the game (e.g. via a uniform) for
+ * animated shaders; it defaults to 0 otherwise.
+ */
+export function generateEngineShaders(graph: ShaderGraph): { vertex: string; fragment: string } {
+    const { lines, colorExpr } = buildBody(graph, 'vec3(v_uv, 0.0)', 'u_time');
+    const fragment = [
+        '#version 150 core',
+        'in vec2 v_uv;',
+        'in vec3 v_worldPos;',
+        'uniform float u_time;',
+        'out vec4 frag_color;',
+        '',
+        'void main() {',
+        ...lines,
+        `    frag_color = vec4(${colorExpr}, 1.0);`,
+        '}',
+    ].join('\n');
+    return { vertex: ENGINE_VERTEX_SHADER, fragment };
+}

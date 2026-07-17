@@ -131,13 +131,15 @@ export function listMaterialAssets(): Promise<{ materials: { id: string; path: s
     return cmd('list_material_assets', {});
 }
 
-/** Save a generated shader (GLSL + authoring graph) under assets/shaders/. */
+/** Save a generated engine shader (vertex + fragment GLSL + authoring graph)
+ * under assets/shaders/ as <name>.vert.glsl / <name>.frag.glsl. */
 export function saveShader(
     name: string,
-    glsl: string,
+    vertex: string,
+    fragment: string,
     graph: unknown,
-): Promise<{ saved: boolean; name: string; path: string; relativePath: string }> {
-    return cmd('save_shader', { name, glsl, graph });
+): Promise<{ saved: boolean; name: string; vertexPath: string; fragmentPath: string; relativePath: string }> {
+    return cmd('save_shader', { name, vertex, fragment, graph });
 }
 
 export function assetFileUrl(relativePath: string): string {

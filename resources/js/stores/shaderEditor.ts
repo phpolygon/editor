@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {
     emptyShaderGraph,
-    generateFragmentShader,
+    generateEngineShaders,
     addShaderNode,
     createShaderNode,
     uniqueShaderNodeId,
@@ -34,8 +34,8 @@ export const useShaderEditorStore = defineStore('shaderEditor', () => {
     }
 
     async function save() {
-        const glsl = generateFragmentShader(graph.value);
-        return saveShader(name.value.trim() || 'shader', glsl, graph.value);
+        const { vertex, fragment } = generateEngineShaders(graph.value);
+        return saveShader(name.value.trim() || 'shader', vertex, fragment, graph.value);
     }
 
     return { graph, name, error, setGraph, addNode, reset, save };

@@ -46,27 +46,28 @@ class SaveShaderCommandTest extends TestCase
         $this->rrmdir($this->projectDir);
     }
 
-    public function testWritesGlslAndGraph(): void
+    public function testWritesVertexFragmentAndGraph(): void
     {
         $result = (new SaveShaderCommand([
             'name' => 'waves',
-            'glsl' => "void main() {\n  gl_FragColor = vec4(1.0);\n}",
+            'vertex' => "#version 150 core\nvoid main() { gl_Position = vec4(0.0); }",
+            'fragment' => "#version 150 core\nout vec4 frag_color;\nvoid main() { frag_color = vec4(1.0); }",
             'graph' => ['nodes' => [['id' => 'fragment', 'type' => 'fragment']], 'connections' => []],
         ]))->execute($this->context);
 
         $this->assertTrue($result['saved']);
-        $this->assertSame('shaders/waves.frag.glsl', $result['relativePath']);
-        $this->assertFileExists($result['path']);
-        $this->assertStringContainsString('gl_FragColor', (string) file_get_contents($result['path']));
-
-        $graphFile = $this->projectDir.'/assets/shaders/waves.shader.json';
-        $this->assertFileExists($graphFile);
+        $this->assertSame('shaders/waves.vert.glsl', $result['vertexPath']);
+        $this->assertSame('shaders/waves.frag.glsl', $result['fragmentPath']);
+        $this->assertFileExists($this->projectDir.'/assets/shaders/waves.vert.glsl');
+        $this->assertFileExists($this->projectDir.'/assets/shaders/waves.frag.glsl');
+        $this->assertFileExists($this->projectDir.'/assets/shaders/waves.shader.json');
+        $this->assertStringContainsString('frag_color', (string) file_get_contents($this->projectDir.'/assets/shaders/waves.frag.glsl'));
     }
 
     public function testThrowsForEmptyGlsl(): void
     {
         $this->expectException(\RuntimeException::class);
-        (new SaveShaderCommand(['name' => 'x', 'glsl' => '  ']))->execute($this->context);
+        (new SaveShaderCommand(['name' => 'x', 'vertex' => '  ', 'fragment' => '  ']))->execute($this->context);
     }
 
     public function testThrowsForEmptyName(): void

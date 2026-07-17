@@ -9,10 +9,15 @@ use PHPolygon\Editor\Support\Path;
 use RuntimeException;
 
 /**
- * Persist a generated shader: the GLSL fragment source as
- * `assets/shaders/<name>.frag.glsl` (a real GLSL file the engine's shader
- * pipeline can compile/transpile) plus the authoring graph as
- * `<name>.shader.json` so it can be reopened in the editor.
+ * Persist a generated engine shader: the vertex + fragment GLSL as
+ * `assets/shaders/<name>.vert.glsl` / `<name>.frag.glsl` (real GLSL files the
+ * engine's shader pipeline compiles/transpiles — OpenGL directly, vio at
+ * runtime) plus the authoring graph as `<name>.shader.json` so it can be
+ * reopened in the editor.
+ *
+ * A game registers the pair with
+ *   Shader::register('id', new ShaderDefinition('…/id.vert.glsl', '…/id.frag.glsl'))
+ * and references it via `new Material(shader: 'id')`.
  */
 class SaveShaderCommand implements CommandInterface
 {
@@ -29,9 +34,10 @@ class SaveShaderCommand implements CommandInterface
             throw new RuntimeException("Invalid shader name: {$name}");
         }
 
-        $glsl = is_string($this->args['glsl'] ?? null) ? $this->args['glsl'] : '';
-        if (trim($glsl) === '') {
-            throw new RuntimeException('Shader GLSL is empty');
+        $vertex = is_string($this->args['vertex'] ?? null) ? $this->args['vertex'] : '';
+        $fragment = is_string($this->args['fragment'] ?? null) ? $this->args['fragment'] : '';
+        if (trim($vertex) === '' || trim($fragment) === '') {
+            throw new RuntimeException('Shader vertex/fragment GLSL is empty');
         }
 
         $dir = Path::join($context->getAssetsDir(), self::SHADERS_SUBDIR);
@@ -39,9 +45,10 @@ class SaveShaderCommand implements CommandInterface
             throw new RuntimeException("Failed to create shaders directory: {$dir}");
         }
 
-        $glslPath = Path::join($dir, $sanitized.'.frag.glsl');
-        if (file_put_contents($glslPath, $glsl) === false) {
-            throw new RuntimeException("Failed to write shader: {$glslPath}");
+        $vertPath = Path::join($dir, $sanitized.'.vert.glsl');
+        $fragPath = Path::join($dir, $sanitized.'.frag.glsl');
+        if (file_put_contents($vertPath, $vertex) === false || file_put_contents($fragPath, $fragment) === false) {
+            throw new RuntimeException("Failed to write shader files in: {$dir}");
         }
 
         // Keep the authoring graph alongside so the shader can be reopened.
@@ -55,7 +62,8 @@ class SaveShaderCommand implements CommandInterface
         return [
             'saved' => true,
             'name' => $sanitized,
-            'path' => $glslPath,
+            'vertexPath' => self::SHADERS_SUBDIR.'/'.$sanitized.'.vert.glsl',
+            'fragmentPath' => self::SHADERS_SUBDIR.'/'.$sanitized.'.frag.glsl',
             'relativePath' => self::SHADERS_SUBDIR.'/'.$sanitized.'.frag.glsl',
         ];
     }
