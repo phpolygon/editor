@@ -43,6 +43,7 @@ class LoadMeshAssetCommand implements CommandInterface
             'name' => is_string($data['name'] ?? null) ? $data['name'] : $sanitized,
             'nodes' => is_array($data['nodes'] ?? null) ? $data['nodes'] : [],
             'output' => is_string($data['output'] ?? null) ? $data['output'] : '',
+            'raw' => is_array($data['raw'] ?? null) ? $data['raw'] : null,
         ];
     }
 }

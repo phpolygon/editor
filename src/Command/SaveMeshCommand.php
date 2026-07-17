@@ -33,10 +33,20 @@ class SaveMeshCommand implements CommandInterface
             throw new RuntimeException("Invalid mesh name: {$name}");
         }
 
-        $nodes = is_array($this->args['nodes'] ?? null) ? $this->args['nodes'] : [];
-        $output = is_string($this->args['output'] ?? null) ? $this->args['output'] : '';
-        if ($nodes === [] || $output === '') {
-            throw new RuntimeException('Mesh graph must have nodes and an output');
+        // A mesh asset is either a procedural graph ({nodes, output}) or baked
+        // raw geometry ({raw: {vertices, normals, uvs, indices}}) — the latter
+        // for vertex-edited or imported meshes that have no generating graph.
+        $raw = is_array($this->args['raw'] ?? null) ? $this->args['raw'] : null;
+
+        if ($raw !== null) {
+            $payload = ['name' => $sanitized, 'raw' => $raw];
+        } else {
+            $nodes = is_array($this->args['nodes'] ?? null) ? $this->args['nodes'] : [];
+            $output = is_string($this->args['output'] ?? null) ? $this->args['output'] : '';
+            if ($nodes === [] || $output === '') {
+                throw new RuntimeException('Mesh graph must have nodes and an output');
+            }
+            $payload = ['name' => $sanitized, 'nodes' => $nodes, 'output' => $output];
         }
 
         $dir = Path::join($context->getAssetsDir(), self::MESHES_SUBDIR);
@@ -47,10 +57,7 @@ class SaveMeshCommand implements CommandInterface
         $filePath = Path::join($dir, $sanitized.'.mesh.json');
         $relativePath = self::MESHES_SUBDIR.'/'.$sanitized.'.mesh.json';
 
-        $json = json_encode(
-            ['name' => $sanitized, 'nodes' => $nodes, 'output' => $output],
-            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
-        );
+        $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if ($json === false || file_put_contents($filePath, $json) === false) {
             throw new RuntimeException("Failed to write mesh file: {$filePath}");
         }

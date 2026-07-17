@@ -9,7 +9,8 @@ import {
     type GraphNode,
     type ProceduralGraphData,
 } from '@/prefab/graph';
-import { evaluateProceduralMesh, saveMesh, listMeshAssets, loadMeshAsset } from '@/bridge/commands';
+import { evaluateProceduralMesh, saveMesh, saveRawMesh, listMeshAssets, loadMeshAsset } from '@/bridge/commands';
+import { computeNormals, flipNormals, type RawMeshData } from '@/mesh/editMesh';
 import type { MeshData } from '@/types';
 
 /**
@@ -25,6 +26,11 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
     const error = ref<string | null>(null);
     const evaluating = ref(false);
     const assets = ref<{ name: string; path: string }[]>([]);
+
+    // Vertex-editing: `editedMesh` is a mutable baked copy of the current mesh;
+    // while in edit mode the graph is inert and this raw geometry is the source.
+    const editMode = ref(false);
+    const editedMesh = ref<RawMeshData | null>(null);
 
     function starterGraph(): ProceduralGraphData {
         return addNode(emptyGraph(), createNode('box', 'box'));
@@ -83,12 +89,67 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         return saved;
     }
 
-    /** Load a saved mesh asset back into the editor. */
+    /** Load a saved mesh asset back into the editor (graph or baked raw). */
     async function load(assetName: string) {
         const data = await loadMeshAsset(assetName);
-        graph.value = { nodes: data.nodes as GraphNode[], output: data.output };
         name.value = data.name;
-        await evaluate();
+        if (data.raw) {
+            editedMesh.value = {
+                vertices: [...data.raw.vertices],
+                normals: [...data.raw.normals],
+                uvs: [...data.raw.uvs],
+                indices: [...data.raw.indices],
+            };
+            editMode.value = true;
+        } else {
+            editMode.value = false;
+            editedMesh.value = null;
+            graph.value = { nodes: data.nodes as GraphNode[], output: data.output };
+            await evaluate();
+        }
+    }
+
+    /** Bake the current evaluated mesh into an editable raw copy. */
+    function enterEditMode() {
+        const p = preview.value;
+        if (!p) return;
+        editedMesh.value = {
+            vertices: [...p.vertices],
+            normals: [...(p.normals ?? [])],
+            uvs: [...(p.uvs ?? [])],
+            indices: [...p.indices],
+        };
+        editMode.value = true;
+    }
+
+    function exitEditMode() {
+        editMode.value = false;
+        editedMesh.value = null;
+    }
+
+    /** Replace the edited vertex positions and recompute normals. */
+    function updateEditedVertices(vertices: number[]) {
+        if (!editedMesh.value) return;
+        editedMesh.value = {
+            ...editedMesh.value,
+            vertices,
+            normals: computeNormals(vertices, editedMesh.value.indices),
+        };
+    }
+
+    function flipEditedNormals() {
+        if (editedMesh.value) editedMesh.value = flipNormals(editedMesh.value);
+    }
+
+    /** Save the current mesh — raw geometry in edit mode, otherwise the graph. */
+    async function saveCurrent() {
+        const meshName = name.value.trim() || 'mesh';
+        if (editMode.value && editedMesh.value) {
+            const saved = await saveRawMesh(meshName, editedMesh.value);
+            await refreshAssets();
+            return saved;
+        }
+        return save();
     }
 
     return {
@@ -98,12 +159,19 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         error,
         evaluating,
         assets,
+        editMode,
+        editedMesh,
         setGraph,
         addNodeOfType,
         reset,
         evaluate,
         refreshAssets,
         save,
+        saveCurrent,
         load,
+        enterEditMode,
+        exitEditMode,
+        updateEditedVertices,
+        flipEditedNormals,
     };
 });

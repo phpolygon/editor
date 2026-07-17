@@ -105,6 +105,26 @@ class MeshAssetCommandsTest extends TestCase
         $this->assertSame('box', $loaded['nodes'][0]['type']);
     }
 
+    public function testSaveAndLoadRawGeometry(): void
+    {
+        $saved = (new SaveMeshCommand([
+            'name' => 'edited',
+            'raw' => [
+                'vertices' => [0, 0, 0, 1, 0, 0, 0, 1, 0],
+                'normals' => [],
+                'uvs' => [],
+                'indices' => [0, 1, 2],
+            ],
+        ]))->execute($this->context);
+
+        $this->assertSame('meshes/edited.mesh.json', $saved['relativePath']);
+
+        $loaded = (new LoadMeshAssetCommand(['name' => 'edited']))->execute($this->context);
+        $this->assertNotNull($loaded['raw']);
+        $this->assertSame([0, 1, 2], $loaded['raw']['indices']);
+        $this->assertSame([0, 0, 0, 1, 0, 0, 0, 1, 0], $loaded['raw']['vertices']);
+    }
+
     public function testLoadThrowsForMissingMesh(): void
     {
         $this->expectException(\RuntimeException::class);

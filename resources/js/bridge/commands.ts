@@ -330,6 +330,14 @@ export function evaluateProceduralMesh(
     return cmd<MeshData>('evaluate_procedural_mesh', { nodes, output, meshId });
 }
 
+/** Raw baked geometry (flat arrays) — the storage form for edited/imported meshes. */
+export interface RawMeshPayload {
+    vertices: number[];
+    normals: number[];
+    uvs: number[];
+    indices: number[];
+}
+
 /** Save a procedural-mesh graph as a reusable asset under assets/meshes/. */
 export function saveMesh(
     name: string,
@@ -339,12 +347,20 @@ export function saveMesh(
     return cmd('save_mesh', { name, nodes, output });
 }
 
+/** Save baked raw geometry (vertex-edited or imported) as a mesh asset. */
+export function saveRawMesh(
+    name: string,
+    raw: RawMeshPayload,
+): Promise<{ saved: boolean; name: string; path: string; relativePath: string }> {
+    return cmd('save_mesh', { name, raw });
+}
+
 export function listMeshAssets(): Promise<{ meshes: { name: string; path: string }[] }> {
     return cmd('list_mesh_assets', {});
 }
 
 export function loadMeshAsset(
     name: string,
-): Promise<{ name: string; nodes: unknown[]; output: string }> {
+): Promise<{ name: string; nodes: unknown[]; output: string; raw: RawMeshPayload | null }> {
     return cmd('load_mesh_asset', { name });
 }
