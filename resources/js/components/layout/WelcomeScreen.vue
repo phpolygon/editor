@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
-import { Boxes, FolderOpen, FolderInput, Clock, ArrowRight } from 'lucide-vue-next';
+import { onMounted, ref } from 'vue';
+import { Boxes, FolderOpen, FolderInput, FilePlus2, Clock, ArrowRight } from 'lucide-vue-next';
 import Button from '@/components/ui/Button.vue';
+import NewProjectWizard from '@/components/layout/NewProjectWizard.vue';
 import { useProjectStore } from '@/stores/project';
 import { useToast } from '@/composables/useToast';
 
@@ -12,6 +13,8 @@ import { useToast } from '@/composables/useToast';
  */
 const projectStore = useProjectStore();
 const { addToast } = useToast();
+
+const showNewProject = ref(false);
 
 onMounted(() => {
     projectStore.fetchRecent().catch(() => {});
@@ -63,9 +66,12 @@ async function openRecent(dir: string, name: string) {
 
             <!-- Primary actions -->
             <div class="flex items-center gap-2">
-                <Button :icon="FolderOpen" variant="primary" size="md" @click="open">Open Project</Button>
+                <Button :icon="FilePlus2" variant="primary" size="md" @click="showNewProject = true">New Project</Button>
+                <Button :icon="FolderOpen" size="md" @click="open">Open Project</Button>
                 <Button :icon="FolderInput" size="md" @click="importProject">Import Project</Button>
             </div>
+
+            <NewProjectWizard v-model="showNewProject" />
 
             <!-- Recent projects -->
             <div v-if="projectStore.recent.length > 0" class="w-full mt-2">

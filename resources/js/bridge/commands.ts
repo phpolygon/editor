@@ -26,6 +26,16 @@ export function loadScene(sceneName: string): Promise<SceneData> {
     return cmd<SceneData>('load_scene', { sceneName });
 }
 
+/**
+ * Expand the active scene's code-prefab references into real geometry for the
+ * viewport (runs the game's headless expandCommand, caches the meshes/materials).
+ * The document keeps the authored references; call this after loading or editing
+ * a code-prefab scene to refresh the preview.
+ */
+export function expandScene(): Promise<SceneData & { expanded?: boolean }> {
+    return cmd<SceneData & { expanded?: boolean }>('expand_scene', {});
+}
+
 export function saveScene(): Promise<{ saved: boolean }> {
     return cmd<{ saved: boolean }>('save_scene');
 }
@@ -36,6 +46,79 @@ export function listScenes(): Promise<{ scenes: string[] }> {
 
 export function createScene(name: string): Promise<SceneData> {
     return cmd<SceneData>('create_scene', { name });
+}
+
+export interface CreatedProject {
+    created: boolean;
+    projectDir: string;
+    name: string;
+    namespace: string;
+    slug: string;
+    identifier: string;
+    version: string;
+    entryScene: string;
+    bootClass: string;
+    steam: { enabled: boolean; appId?: string };
+    needsComposerInstall: boolean;
+}
+
+export interface SteamConfig {
+    enabled: boolean;
+    appId?: string;
+    steamUser?: string;
+    uploadTarget?: string;
+    setLive?: string;
+    depots?: { windows?: string; linux?: string; macos?: string };
+}
+
+export interface NewProjectOptions {
+    namespace?: string;
+    mode?: '2d' | '3d';
+    engineConstraint?: string;
+    identifier?: string;
+    version?: string;
+    sceneName?: string;
+    width?: number;
+    height?: number;
+    extensions?: string[];
+    threading?: boolean;
+    steam?: SteamConfig;
+}
+
+/**
+ * Scaffold a complete, buildable + runnable PHPolygon game project (manifest,
+ * composer.json, build.json, game.php + boot class, starter scene, optional
+ * Steam files) inside `parentDir`. Not opened and dependencies not installed —
+ * follow up with `composer install` + openProject().
+ */
+export function createGameProject(
+    parentDir: string,
+    name: string,
+    options: NewProjectOptions = {},
+): Promise<CreatedProject> {
+    return cmd<CreatedProject>('create_game_project', { parentDir, name, ...options });
+}
+
+/**
+ * Run `composer install` inside a project directory to pull its dependencies.
+ * Long-running + network-bound; editing does not require it.
+ */
+export function installProjectDependencies(
+    projectDir: string,
+): Promise<{ installed: boolean; exitCode: number; output: string }> {
+    return cmd('install_project_dependencies', { projectDir });
+}
+
+/**
+ * Build a game project into a standalone executable via the engine builder.
+ * Long-running + network-bound (composer + runtime download + packaging).
+ * `platform` empty = current host; variant 'base' | 'steam'.
+ */
+export function buildGamePackage(
+    projectDir: string,
+    options: { platform?: string; variant?: 'base' | 'steam'; phpVersion?: '8.4' | '8.5' } = {},
+): Promise<{ built: boolean; exitCode: number; output: string; outputDir: string; variant: string; phpVersion: string }> {
+    return cmd('build_game_package', { projectDir, ...options });
 }
 
 export function createEntity(
@@ -341,8 +424,48 @@ export function spawnPrefab(
     return cmd('spawn_prefab', { path, parent });
 }
 
+/**
+ * Place a CODE prefab as a REFERENCE: one entity carrying `prefab` (class) plus
+ * authored override components (e.g. a design-variant component + Transform3D)
+ * rather than inlined geometry. The game regenerates the geometry from the
+ * prefab's build() on load.
+ */
+export function spawnCodePrefab(
+    prefabClass: string,
+    options: {
+        name?: string;
+        parent?: string | null;
+        components?: { _class: string; [prop: string]: unknown }[];
+    } = {},
+): Promise<{ spawned: string; prefab: string; parent: string | null }> {
+    return cmd('spawn_code_prefab', {
+        class: prefabClass,
+        name: options.name,
+        parent: options.parent ?? null,
+        components: options.components ?? [],
+    });
+}
+
 export function listPrefabs(): Promise<{ prefabs: { name: string; path: string }[] }> {
     return cmd('list_prefabs', {});
+}
+
+/**
+ * List the game's editor-placeable CODE prefabs (engine Prefab classes), as
+ * opposed to file-based `assets/prefabs/*.prefab.json`. Sourced from the game's
+ * `prefabsCommand` (project manifest); placing one spawns a prefab reference +
+ * variant rather than inlined geometry.
+ */
+export interface CodePrefabEntry {
+    name: string;
+    class: string;
+    variants?: string[];
+    variantComponent?: string;
+    variantProperty?: string;
+}
+
+export function listCodePrefabs(): Promise<{ prefabs: CodePrefabEntry[] }> {
+    return cmd('list_code_prefabs', {});
 }
 
 export function evaluateProceduralMesh(

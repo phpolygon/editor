@@ -87,6 +87,11 @@ return [
         'node_modules',
         '*/tests',
 
+        // Vite dev-server marker: if present, @vite loads assets from the dev
+        // server instead of public/build, giving a blank window in the packaged
+        // app. Never bundle it (it may linger when `npm run dev` was running).
+        'public/hot',
+
         // The engine (phpolygon/phpolygon) ships a full editor sub-application
         // with its own vendored Electron + node_modules (2+ GB, a nested
         // Electron.app). Bundling it bloats the package and breaks macOS

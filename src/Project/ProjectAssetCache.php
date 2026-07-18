@@ -58,6 +58,26 @@ final class ProjectAssetCache
         @file_put_contents($dir.DIRECTORY_SEPARATOR.'meshes.json', json_encode($meshes));
     }
 
+    /**
+     * Write a pre-built mesh/material snapshot into the cache — used when the
+     * geometry was produced out-of-process (e.g. a game `expandCommand` that
+     * boots the engine and returns a {meshes, materials} bundle), so the shapes
+     * already match {@see meshToArray()} / {@see materialToArray()}.
+     *
+     * @param array<string, mixed> $meshes    id => mesh array
+     * @param array<string, mixed> $materials id => material array
+     */
+    public static function write(string $projectDir, array $meshes, array $materials): void
+    {
+        $dir = self::dir($projectDir);
+        if (! is_dir($dir) && ! @mkdir($dir, 0o777, true) && ! is_dir($dir)) {
+            return;
+        }
+
+        @file_put_contents($dir.DIRECTORY_SEPARATOR.'meshes.json', json_encode($meshes));
+        @file_put_contents($dir.DIRECTORY_SEPARATOR.'materials.json', json_encode($materials));
+    }
+
     /** @return array<string, mixed>|null */
     public static function material(string $projectDir, string $id): ?array
     {

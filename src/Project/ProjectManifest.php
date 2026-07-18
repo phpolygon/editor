@@ -17,6 +17,16 @@ class ProjectManifest
      *                                    project dir) to regenerate that scene's
      *                                    `*.scene.json` snapshot headlessly; the
      *                                    output path is appended as one argument.
+     * @param  string  $prefabsCommand  Shell command the editor runs (cwd = project
+     *                                  dir) to list the game's editor-placeable
+     *                                  code prefabs as JSON ({prefabs:[{name,class,
+     *                                  variants?}]}) on stdout. Empty = the game
+     *                                  exposes no code prefabs.
+     * @param  string  $expandCommand  Shell command the editor runs (cwd = project
+     *                                 dir; input + output scene paths appended) to
+     *                                 expand a code-prefab scene into geometry for
+     *                                 preview: it prints a bundle {entities, meshes,
+     *                                 materials}. Empty = no geometry preview.
      */
     public function __construct(
         public readonly string $name,
@@ -31,6 +41,8 @@ class ProjectManifest
         public readonly string $panelLayoutsPath = 'assets/ui',
         public readonly string $liveWorldScene = '',
         public readonly string $liveWorldCommand = '',
+        public readonly string $prefabsCommand = '',
+        public readonly string $expandCommand = '',
     ) {}
 
     /** @return array<string, mixed> */
@@ -50,6 +62,8 @@ class ProjectManifest
             'panelLayoutsPath' => $this->panelLayoutsPath,
             'liveWorldScene' => $this->liveWorldScene,
             'liveWorldCommand' => $this->liveWorldCommand,
+            'prefabsCommand' => $this->prefabsCommand,
+            'expandCommand' => $this->expandCommand,
         ];
     }
 }

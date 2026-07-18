@@ -235,7 +235,7 @@ function setup(): void {
     scene.add(entityRoot);
 
     sync = new EntitySync(entityRoot, invalidate);
-    sync.sync(sceneStore.entities);
+    sync.sync(sceneStore.viewEntities);
 
     gizmo = new TransformControls(camera, renderer.domElement);
     gizmo.setSize(0.8);
@@ -306,7 +306,7 @@ function cleanup(): void {
 }
 
 watch(
-    () => sceneStore.entities,
+    () => sceneStore.viewEntities,
     (entities) => {
         if (suppressSyncWhileDragging) return;
         sync?.sync(entities);

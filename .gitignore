@@ -30,3 +30,6 @@ yarn-error.log
 # local build log + PHP binary dir (never commit)
 build-native.log
 php-bin-vio/
+
+# bundled composer for the "new project" install step (fetched, not committed)
+/bin/composer.phar

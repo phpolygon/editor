@@ -6,7 +6,9 @@ use Illuminate\Support\ServiceProvider;
 use PHPolygon\Editor\Command\AddComponentCommand;
 use PHPolygon\Editor\Command\AddLayoutElementCommand;
 use PHPolygon\Editor\Command\AddWidgetCommand;
+use PHPolygon\Editor\Command\BuildGamePackageCommand;
 use PHPolygon\Editor\Command\CreateEntityCommand;
+use PHPolygon\Editor\Command\CreateGameProjectCommand;
 use PHPolygon\Editor\Command\CreatePanelLayoutCommand;
 use PHPolygon\Editor\Command\CreatePrimitiveCommand;
 use PHPolygon\Editor\Command\CreateSceneCommand;
@@ -14,10 +16,13 @@ use PHPolygon\Editor\Command\CreateSpriteCommand;
 use PHPolygon\Editor\Command\CreateUiLayoutCommand;
 use PHPolygon\Editor\Command\DeleteEntityCommand;
 use PHPolygon\Editor\Command\EditorCommandBus;
+use PHPolygon\Editor\Command\ExpandSceneCommand;
 use PHPolygon\Editor\Command\GetComponentSchemaCommand;
 use PHPolygon\Editor\Command\GetEntityHierarchyCommand;
 use PHPolygon\Editor\Command\GetMaterialCommand;
 use PHPolygon\Editor\Command\GetMeshCommand;
+use PHPolygon\Editor\Command\InstallProjectDependenciesCommand;
+use PHPolygon\Editor\Command\ListCodePrefabsCommand;
 use PHPolygon\Editor\Command\ListComponentsCommand;
 use PHPolygon\Editor\Command\ListMaterialsCommand;
 use PHPolygon\Editor\Command\ListMeshesCommand;
@@ -52,6 +57,7 @@ use PHPolygon\Editor\Command\SaveShaderCommand;
 use PHPolygon\Editor\Command\SaveUiLayoutCommand;
 use PHPolygon\Editor\Command\SetWidgetBindingCommand;
 use PHPolygon\Editor\Command\SetWidgetEventCommand;
+use PHPolygon\Editor\Command\SpawnCodePrefabCommand;
 use PHPolygon\Editor\Command\SpawnPrefabCommand;
 use PHPolygon\Editor\Command\TranspileUiLayoutCommand;
 use PHPolygon\Editor\Command\UndoCommand;
@@ -71,6 +77,15 @@ class EditorServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // The MCP stdio server (`php artisan mcp:start editor`) is a long-lived
+        // console process with no HTTP session. The editor's project/document
+        // state is session-backed, so switch to an in-memory array store that
+        // stays consistent for the lifetime of that process. HTTP requests keep
+        // their configured driver.
+        if ($this->app->runningInConsole() && in_array('mcp:start', $_SERVER['argv'] ?? [], true)) {
+            config(['session.driver' => 'array']);
+        }
+
         $this->app->singleton(ComponentRegistry::class);
         $this->app->singleton(SystemRegistry::class);
         $this->app->singleton(SceneTranspiler::class);
@@ -185,6 +200,9 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('load_scene', LoadSceneCommand::class);
             $bus->register('save_scene', SaveSceneCommand::class);
             $bus->register('list_scenes', ListScenesCommand::class);
+            $bus->register('create_game_project', CreateGameProjectCommand::class);
+            $bus->register('install_project_dependencies', InstallProjectDependenciesCommand::class);
+            $bus->register('build_game_package', BuildGamePackageCommand::class);
             $bus->register('create_scene', CreateSceneCommand::class);
             $bus->register('create_entity', CreateEntityCommand::class);
             $bus->register('delete_entity', DeleteEntityCommand::class);
@@ -207,7 +225,10 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('create_sprite', CreateSpriteCommand::class);
             $bus->register('save_prefab', SavePrefabCommand::class);
             $bus->register('spawn_prefab', SpawnPrefabCommand::class);
+            $bus->register('spawn_code_prefab', SpawnCodePrefabCommand::class);
             $bus->register('list_prefabs', ListPrefabsCommand::class);
+            $bus->register('list_code_prefabs', ListCodePrefabsCommand::class);
+            $bus->register('expand_scene', ExpandSceneCommand::class);
             $bus->register('evaluate_procedural_mesh', EvaluateProceduralMeshCommand::class);
 
             // Audio (wave synthesizer)
@@ -249,6 +270,15 @@ class EditorServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        // Point the project-scaffolding install step (InstallProjectDependencies
+        // / composer install) at a bundled composer.phar when one ships in bin/,
+        // so the packaged editor works without a system-wide Composer. In dev the
+        // command falls back to the system `composer`, so this stays optional.
+        if (getenv('PHPOLYGON_COMPOSER_PHAR') === false) {
+            $phar = base_path('bin/composer.phar');
+            if (is_file($phar)) {
+                putenv('PHPOLYGON_COMPOSER_PHAR='.$phar);
+            }
+        }
     }
 }

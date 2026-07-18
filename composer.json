@@ -12,19 +12,17 @@
     "license": "MIT",
     "repositories": [
         {
-            "type": "path",
-            "url": "../phpolygon",
-            "options": {
-                "symlink": true
-            }
+            "type": "vcs",
+            "url": "https://github.com/phpolygon/phpolygon"
         }
     ],
     "require": {
         "php": "^8.2",
         "laravel/framework": "^13.0",
+        "laravel/mcp": "*",
         "laravel/tinker": "^3.0",
         "nativephp/desktop": "^2.1",
-        "phpolygon/phpolygon": "dev-main"
+        "phpolygon/phpolygon": "^0.35"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -52,7 +50,8 @@
     "scripts": {
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
-            "@php artisan package:discover --ansi"
+            "@php artisan package:discover --ansi",
+            "@php artisan editor:fetch-composer --soft --ansi"
         ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force",

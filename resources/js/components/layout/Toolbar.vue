@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import {
     FolderOpen,
     FolderInput,
     History,
     Play,
     Square,
+    Hammer,
     RotateCw,
     FilePlus2,
     Save,
@@ -36,6 +37,7 @@ import MenuItem from '@/components/ui/MenuItem.vue';
 import MenuLabel from '@/components/ui/MenuLabel.vue';
 import MenuSeparator from '@/components/ui/MenuSeparator.vue';
 import ToolbarGroup from '@/components/ui/ToolbarGroup.vue';
+import BuildGameModal from '@/components/layout/BuildGameModal.vue';
 import type { PrimitiveType } from '@/bridge/commands';
 
 const sceneStore = useSceneStore();
@@ -44,6 +46,8 @@ const projectStore = useProjectStore();
 const selectionStore = useSelectionStore();
 const { addToast } = useToast();
 const { prompt, confirm } = useDialog();
+
+const showBuild = ref(false);
 
 const workspaceOptions = computed(() =>
     WORKSPACES.map((w) => ({ value: w.id, label: w.label, icon: w.icon, title: w.label })),
@@ -263,6 +267,12 @@ async function switchScene(sceneName: string) {
                 {{ editorStore.playing ? 'Stop' : 'Play' }}
             </Button>
             <IconButton
+                v-if="projectStore.opened"
+                :icon="Hammer"
+                label="Build game — package the project into a standalone executable"
+                @click="showBuild = true"
+            />
+            <IconButton
                 v-if="editorStore.workspace === 'scene'"
                 :icon="RotateCw"
                 label="Rebuild: reload the scene from PHP (re-runs build(), re-captures meshes/materials)"
@@ -270,6 +280,8 @@ async function switchScene(sceneName: string) {
                 @click="rebuild"
             />
         </ToolbarGroup>
+
+        <BuildGameModal v-model="showBuild" />
 
         <!-- Scene-only controls -->
         <template v-if="editorStore.workspace === 'scene'">

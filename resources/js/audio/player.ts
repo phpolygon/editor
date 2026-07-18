@@ -22,7 +22,7 @@ export function playSamples(samples: Float32Array, sampleRate = 44100): Promise<
     stop();
 
     const buffer = c.createBuffer(1, samples.length, sampleRate);
-    buffer.copyToChannel(samples, 0);
+    buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0);
 
     const source = c.createBufferSource();
     source.buffer = buffer;

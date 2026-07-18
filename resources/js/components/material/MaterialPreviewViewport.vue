@@ -96,8 +96,8 @@ onBeforeUnmount(() => {
     scene = null;
 });
 
-function mount(el: Element | null) {
-    if (el && !renderer) init(el as HTMLDivElement);
+function mount(el: unknown) {
+    if (el instanceof HTMLElement && !renderer) init(el as HTMLDivElement);
 }
 </script>
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\GameBuildRunner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Native\Desktop\Dialog;
@@ -149,6 +150,73 @@ class EditorApiController extends Controller
         }
 
         return $this->importAndLoad($dir, $importer, $loader, $registry, $recent);
+    }
+
+    /**
+     * Pick a folder via the native dialog and return its path (without opening
+     * anything) — used by the "New Project" flow to choose where the project
+     * directory gets created. Falls back to a path prompt when there is no
+     * Electron bridge (web-only `composer dev`), mirroring openProjectDialog.
+     */
+    public function pickFolder(): JsonResponse
+    {
+        try {
+            $dir = Dialog::new()
+                ->title('Select folder for the new project')
+                ->folders()
+                ->button('Select')
+                ->open();
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'Native dialog unavailable',
+                'fallback' => 'path-input',
+            ], 503);
+        }
+
+        if (! $dir || ! is_dir($dir)) {
+            return response()->json(['ok' => false, 'error' => 'No folder selected'], 422);
+        }
+
+        return response()->json(['ok' => true, 'data' => ['dir' => $dir]]);
+    }
+
+    /**
+     * Start a detached package build for the currently open project and return
+     * a build id the UI polls via buildStatus. Requires an open project whose
+     * dependencies are installed (vendor/bin/phpolygon present).
+     */
+    public function buildStart(Request $request, EditorContext $context, GameBuildRunner $runner): JsonResponse
+    {
+        $projectDir = $context->projectDir;
+        if ($projectDir === '' || ! is_dir($projectDir)) {
+            return response()->json(['ok' => false, 'error' => 'No project is open'], 422);
+        }
+        if (! is_file(Path::join($projectDir, 'vendor/bin/phpolygon'))) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'Project dependencies are not installed yet. Install them first.',
+            ], 422);
+        }
+
+        $platform = (string) $request->input('platform', '');
+        $variant = $request->input('variant') === 'steam' ? 'steam' : 'base';
+        $phpVersion = $request->input('phpVersion') === '8.4' ? '8.4' : '8.5';
+        $docker = $request->boolean('docker');
+        $platforms = (string) $request->input('platforms', '');
+
+        $id = $runner->start($projectDir, $platform, $variant, $phpVersion, $docker, $platforms);
+
+        return response()->json(['ok' => true, 'data' => [
+            'buildId' => $id,
+            'outputDir' => Path::join($projectDir, 'build'),
+        ]]);
+    }
+
+    /** Poll the live log + completion state of a build started via buildStart. */
+    public function buildStatus(Request $request, GameBuildRunner $runner): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $runner->status((string) $request->input('id', ''))]);
     }
 
     public function browseAsset(EditorContext $context): JsonResponse

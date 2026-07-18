@@ -80,10 +80,18 @@ export const useSceneStore = defineStore('scene', () => {
     const name = ref<string>('');
     const sourceName = ref<string>('');
     const entities = ref<EntityNode[]>([]);
+    // When the scene contains code-prefab REFERENCES, the authored `entities`
+    // carry no geometry. `previewEntities` holds the expanded geometry (from the
+    // game's build()) for the viewport; the hierarchy keeps the authored refs.
+    const previewEntities = ref<EntityNode[] | null>(null);
     const dirty = ref(false);
     const loading = ref(false);
     const sceneList = ref<string[]>([]);
     const mode = ref<SceneMode>('3d');
+
+    // The viewport renders the expanded geometry when a preview is available,
+    // else the authored entities; the hierarchy always uses `entities`.
+    const viewEntities = computed<EntityNode[]>(() => previewEntities.value ?? entities.value);
 
     const entityCount = computed(() => {
         let count = 0;
@@ -124,9 +132,40 @@ export const useSceneStore = defineStore('scene', () => {
             entities.value = normaliseEntities(data.entities);
             mode.value = resolveMode(data.name, entities.value);
             dirty.value = false;
+            await expandPreview();
         } finally {
             loading.value = false;
         }
+    }
+
+    /**
+     * Expand any code-prefab references in the active scene into real geometry
+     * for the viewport (runs the game's headless expandCommand + caches assets).
+     * A scene with no code prefabs clears the preview so the viewport falls back
+     * to the authored entities.
+     */
+    async function expandPreview() {
+        try {
+            const data = await commands.expandScene();
+            previewEntities.value = data.expanded ? normaliseEntities(data.entities) : null;
+        } catch {
+            previewEntities.value = null;
+        }
+    }
+
+    async function spawnCodePrefab(
+        prefabClass: string,
+        options: {
+            name?: string;
+            parent?: string | null;
+            components?: { _class: string; [prop: string]: unknown }[];
+        } = {},
+    ): Promise<string> {
+        const result = await commands.spawnCodePrefab(prefabClass, options);
+        await refreshHierarchy();
+        dirty.value = true;
+        await expandPreview();
+        return result.spawned;
     }
 
     /**
@@ -267,12 +306,16 @@ export const useSceneStore = defineStore('scene', () => {
     return {
         name,
         entities,
+        previewEntities,
+        viewEntities,
         dirty,
         loading,
         sceneList,
         mode,
         entityCount,
         findEntity,
+        expandPreview,
+        spawnCodePrefab,
         fetchSceneList,
         load,
         reload,

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { ApiError, get, post } from '@/bridge/api';
+import { createGameProject, installProjectDependencies, type NewProjectOptions } from '@/bridge/commands';
 import { useSceneStore } from './scene';
 import { useDialog } from '@/composables/useDialog';
 
@@ -145,6 +146,52 @@ export const useProjectStore = defineStore('project', () => {
         }
     }
 
+    /**
+     * Pick the folder that will contain the new project. Uses the native folder
+     * dialog, falling back to a path prompt on web-only runs (no Electron).
+     * Returns the chosen path, or null if the user cancelled.
+     */
+    async function pickCreateFolder(): Promise<string | null> {
+        try {
+            const data = await post<{ dir: string }>('/project/pick-folder');
+            return data.dir;
+        } catch (e) {
+            if (e instanceof ApiError && (e.body as { fallback?: string } | undefined)?.fallback === 'path-input') {
+                return await useDialog().prompt({
+                    title: 'Choose location',
+                    message: 'Path to the folder that will contain the new project:',
+                    placeholder: 'D:\\path\\to\\projects',
+                });
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Scaffold a new project inside `parentDir` and open it. Optionally runs
+     * `composer install` afterwards (not required for editing — the editor
+     * resolves engine classes from its own vendor — but makes the project
+     * runnable). Returns the created project dir and the install outcome
+     * (null when not requested).
+     */
+    async function createProject(opts: {
+        parentDir: string;
+        name: string;
+        install?: boolean;
+        options?: NewProjectOptions;
+    }): Promise<{ projectDir: string; installed: boolean | null }> {
+        const scaffold = await createGameProject(opts.parentDir, opts.name, opts.options ?? {});
+        await openProject(scaffold.projectDir);
+
+        let installed: boolean | null = null;
+        if (opts.install) {
+            const res = await installProjectDependencies(scaffold.projectDir);
+            installed = res.installed;
+        }
+
+        return { projectDir: scaffold.projectDir, installed };
+    }
+
     async function fetchProject() {
         const data = await get<{ manifest: ProjectData['manifest']; projectDir: string; opened: boolean }>('/project');
         if (data.opened) {
@@ -184,6 +231,8 @@ export const useProjectStore = defineStore('project', () => {
         openProjectWithDialog,
         importProject,
         importProjectWithDialog,
+        createProject,
+        pickCreateFolder,
         openRecent,
         fetchProject,
         fetchRecent,

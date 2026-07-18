@@ -96,6 +96,39 @@ class SceneDocument
         $this->dirty = true;
     }
 
+    /**
+     * Add an entity that REFERENCES a code prefab: it carries a `prefab` class
+     * plus authored override components (e.g. a design variant + Transform3D)
+     * instead of inlined geometry. The engine regenerates the geometry from the
+     * prefab's build() on load; the editor expands it for preview. The `prefab`
+     * field survives {@see toArray()} and thus save, and the engine transpiler /
+     * JsonSceneLoader round-trip it.
+     *
+     * @param list<array<string, mixed>> $components Authored components ({_class, ...}).
+     */
+    public function addPrefabInstance(string $name, string $prefabClass, array $components = [], ?string $parentName = null): void
+    {
+        $this->pushUndo();
+
+        $newEntity = [
+            'name' => $name,
+            'prefab' => $prefabClass,
+            'components' => array_values($components),
+        ];
+
+        if ($parentName === null) {
+            $entities = $this->getEntities();
+            $entities[] = $newEntity;
+            $this->data['entities'] = $entities;
+        } else {
+            $entities = $this->getEntities();
+            $this->addEntityToParent($name, $parentName, $newEntity, $entities);
+            $this->data['entities'] = $entities;
+        }
+
+        $this->dirty = true;
+    }
+
     public function removeEntity(string $name): void
     {
         $this->pushUndo();

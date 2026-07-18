@@ -131,7 +131,7 @@ function setup(): void {
     scene.add(entityRoot);
 
     sync = new SpriteSync(entityRoot);
-    sync.sync(sceneStore.entities);
+    sync.sync(sceneStore.viewEntities);
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
@@ -172,7 +172,7 @@ function cleanup(): void {
 }
 
 watch(
-    () => sceneStore.entities,
+    () => sceneStore.viewEntities,
     (entities) => {
         sync?.sync(entities);
         refreshOutline();

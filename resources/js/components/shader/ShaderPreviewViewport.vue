@@ -102,8 +102,8 @@ onBeforeUnmount(() => {
     scene = null;
 });
 
-const mount = (el: Element | null) => {
-    if (el && !renderer) init(el as HTMLDivElement);
+const mount = (el: unknown) => {
+    if (el instanceof HTMLElement && !renderer) init(el as HTMLDivElement);
 };
 </script>
 

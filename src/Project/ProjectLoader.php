@@ -64,6 +64,8 @@ class ProjectLoader
             panelLayoutsPath: is_string($data['panelLayoutsPath'] ?? null) ? $data['panelLayoutsPath'] : 'assets/ui',
             liveWorldScene: is_string($data['liveWorldScene'] ?? null) ? $data['liveWorldScene'] : '',
             liveWorldCommand: is_string($data['liveWorldCommand'] ?? null) ? $data['liveWorldCommand'] : '',
+            prefabsCommand: is_string($data['prefabsCommand'] ?? null) ? $data['prefabsCommand'] : '',
+            expandCommand: is_string($data['expandCommand'] ?? null) ? $data['expandCommand'] : '',
         );
     }
 

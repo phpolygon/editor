@@ -9,9 +9,8 @@
         "allowImportingTsExtensions": true,
         "noEmit": true,
         "sourceMap": true,
-        "baseUrl": ".",
         "paths": {
-            "@/*": ["resources/js/*"]
+            "@/*": ["./resources/js/*"]
         },
         "lib": ["ES2022", "DOM", "DOM.Iterable"],
         "types": ["vite/client"]
