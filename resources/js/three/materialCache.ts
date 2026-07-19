@@ -63,6 +63,18 @@ export async function loadMaterial(id: string): Promise<THREE.MeshStandardMateri
     return promise;
 }
 
+/**
+ * Populate the cache from a bulk get_materials fetch, so the subsequent
+ * per-entity loadMaterial() calls hit the cache instead of firing one request
+ * each. See {@see \PHPolygon\Editor\Command\GetMaterialsCommand}.
+ */
+export function preloadMaterials(list: MaterialData[]): void {
+    for (const data of list) {
+        if (!data.id || cache.has(data.id)) continue;
+        cache.set(data.id, buildMaterial(data));
+    }
+}
+
 export function placeholderMaterial(): THREE.MeshStandardMaterial {
     return new THREE.MeshStandardMaterial({ color: 0xcc4488, roughness: 0.8, wireframe: true });
 }

@@ -20,6 +20,7 @@ import {
     Square as SquareIcon,
     Image,
     SquareDashed,
+    Film,
 } from 'lucide-vue-next';
 import { useSceneStore } from '@/stores/scene';
 import { useEditorStore } from '@/stores/editor';
@@ -38,6 +39,7 @@ import MenuLabel from '@/components/ui/MenuLabel.vue';
 import MenuSeparator from '@/components/ui/MenuSeparator.vue';
 import ToolbarGroup from '@/components/ui/ToolbarGroup.vue';
 import BuildGameModal from '@/components/layout/BuildGameModal.vue';
+import OpenSceneModal from '@/components/layout/OpenSceneModal.vue';
 import type { PrimitiveType } from '@/bridge/commands';
 
 const sceneStore = useSceneStore();
@@ -48,6 +50,7 @@ const { addToast } = useToast();
 const { prompt, confirm } = useDialog();
 
 const showBuild = ref(false);
+const showOpenScene = ref(false);
 
 const workspaceOptions = computed(() =>
     WORKSPACES.map((w) => ({ value: w.id, label: w.label, icon: w.icon, title: w.label })),
@@ -58,7 +61,6 @@ const modeOptions = [
     { value: '3d' as const, label: '3D', title: '3D scene mode' },
 ];
 
-const sceneOptions = computed(() => sceneStore.sceneList.map((s) => ({ value: s, label: s })));
 
 async function loadRecent() {
     try {
@@ -282,6 +284,7 @@ async function switchScene(sceneName: string) {
         </ToolbarGroup>
 
         <BuildGameModal v-model="showBuild" />
+        <OpenSceneModal v-model="showOpenScene" @select="switchScene" />
 
         <!-- Scene-only controls -->
         <template v-if="editorStore.workspace === 'scene'">
@@ -316,14 +319,14 @@ async function switchScene(sceneName: string) {
 
             <!-- Scene selector -->
             <ToolbarGroup>
-                <Select
-                    v-if="projectStore.opened && sceneStore.sceneList.length > 0"
-                    :model-value="sceneStore.name"
-                    :options="sceneOptions"
-                    placeholder="Select scene…"
-                    @update:model-value="switchScene"
-                />
-                <span v-else class="text-xs text-editor-muted px-1">{{ sceneStore.name || 'No scene' }}</span>
+                <Button
+                    :icon="Film"
+                    :disabled="!projectStore.opened"
+                    :title="sceneStore.name ? `Current scene: ${sceneStore.name} — click to open another` : 'Open a scene'"
+                    @click="showOpenScene = true"
+                >
+                    {{ sceneStore.name || 'Open Scene…' }}
+                </Button>
                 <span
                     v-if="sceneStore.dirty"
                     class="w-2 h-2 rounded-full bg-editor-accent shrink-0"

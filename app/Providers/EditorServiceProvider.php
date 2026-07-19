@@ -15,21 +15,29 @@ use PHPolygon\Editor\Command\CreateSceneCommand;
 use PHPolygon\Editor\Command\CreateSpriteCommand;
 use PHPolygon\Editor\Command\CreateUiLayoutCommand;
 use PHPolygon\Editor\Command\DeleteEntityCommand;
+use PHPolygon\Editor\Command\DeleteMeshAssetCommand;
 use PHPolygon\Editor\Command\EditorCommandBus;
+use PHPolygon\Editor\Command\EvaluateProceduralMeshCommand;
 use PHPolygon\Editor\Command\ExpandSceneCommand;
 use PHPolygon\Editor\Command\GetComponentSchemaCommand;
 use PHPolygon\Editor\Command\GetEntityHierarchyCommand;
 use PHPolygon\Editor\Command\GetMaterialCommand;
+use PHPolygon\Editor\Command\GetMaterialsCommand;
 use PHPolygon\Editor\Command\GetMeshCommand;
+use PHPolygon\Editor\Command\GetMeshesCommand;
 use PHPolygon\Editor\Command\InstallProjectDependenciesCommand;
 use PHPolygon\Editor\Command\ListCodePrefabsCommand;
 use PHPolygon\Editor\Command\ListComponentsCommand;
+use PHPolygon\Editor\Command\ListMaterialAssetsCommand;
 use PHPolygon\Editor\Command\ListMaterialsCommand;
+use PHPolygon\Editor\Command\ListMeshAssetsCommand;
 use PHPolygon\Editor\Command\ListMeshesCommand;
 use PHPolygon\Editor\Command\ListPanelLayoutsCommand;
+use PHPolygon\Editor\Command\ListPrefabsCommand;
 use PHPolygon\Editor\Command\ListScenesCommand;
 use PHPolygon\Editor\Command\ListUiLayoutsCommand;
 use PHPolygon\Editor\Command\ListWidgetTypesCommand;
+use PHPolygon\Editor\Command\LoadMeshAssetCommand;
 use PHPolygon\Editor\Command\LoadPanelLayoutCommand;
 use PHPolygon\Editor\Command\LoadSceneCommand;
 use PHPolygon\Editor\Command\LoadUiLayoutCommand;
@@ -39,18 +47,14 @@ use PHPolygon\Editor\Command\RemoveLayoutElementCommand;
 use PHPolygon\Editor\Command\RemoveWidgetCommand;
 use PHPolygon\Editor\Command\RenameEntityCommand;
 use PHPolygon\Editor\Command\RenameLayoutElementCommand;
+use PHPolygon\Editor\Command\RenameMeshAssetCommand;
 use PHPolygon\Editor\Command\RenderUiLayoutCommand;
 use PHPolygon\Editor\Command\ReparentEntityCommand;
 use PHPolygon\Editor\Command\ReparentWidgetCommand;
-use PHPolygon\Editor\Command\SavePanelLayoutCommand;
-use PHPolygon\Editor\Command\EvaluateProceduralMeshCommand;
-use PHPolygon\Editor\Command\ListPrefabsCommand;
-use PHPolygon\Editor\Command\ListMaterialAssetsCommand;
-use PHPolygon\Editor\Command\ListMeshAssetsCommand;
-use PHPolygon\Editor\Command\LoadMeshAssetCommand;
 use PHPolygon\Editor\Command\SaveAudioCommand;
 use PHPolygon\Editor\Command\SaveMaterialCommand;
 use PHPolygon\Editor\Command\SaveMeshCommand;
+use PHPolygon\Editor\Command\SavePanelLayoutCommand;
 use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SaveSceneCommand;
 use PHPolygon\Editor\Command\SaveShaderCommand;
@@ -216,8 +220,10 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('reparent_entity', ReparentEntityCommand::class);
             $bus->register('list_meshes', ListMeshesCommand::class);
             $bus->register('get_mesh', GetMeshCommand::class);
+            $bus->register('get_meshes', GetMeshesCommand::class);
             $bus->register('list_materials', ListMaterialsCommand::class);
             $bus->register('get_material', GetMaterialCommand::class);
+            $bus->register('get_materials', GetMaterialsCommand::class);
             $bus->register('save_material', SaveMaterialCommand::class);
             $bus->register('list_material_assets', ListMaterialAssetsCommand::class);
             $bus->register('save_shader', SaveShaderCommand::class);
@@ -238,6 +244,8 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('save_mesh', SaveMeshCommand::class);
             $bus->register('list_mesh_assets', ListMeshAssetsCommand::class);
             $bus->register('load_mesh_asset', LoadMeshAssetCommand::class);
+            $bus->register('delete_mesh_asset', DeleteMeshAssetCommand::class);
+            $bus->register('rename_mesh_asset', RenameMeshAssetCommand::class);
 
             // UI layout (widget-tree) editing
             $bus->register('list_ui_layouts', ListUiLayoutsCommand::class);
@@ -270,6 +278,17 @@ class EditorServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Editor operations on a real game project are memory-heavy: running a
+        // whole-world scene build() in-process, and json_decode()-ing the large
+        // per-project mesh/material asset cache on every get_mesh/get_material
+        // request. Both blow the default 128M memory_limit for big scenes (e.g.
+        // "Allowed memory size exhausted" in ProjectAssetCache::read). The game
+        // itself runs these builds with the CLI's unbounded limit, so lift ours
+        // for every editor request rather than only on the engine-boot path.
+        if (ini_get('memory_limit') !== '-1') {
+            ini_set('memory_limit', '-1');
+        }
+
         // Point the project-scaffolding install step (InstallProjectDependencies
         // / composer install) at a bundled composer.phar when one ships in bin/,
         // so the packaged editor works without a system-wide Composer. In dev the

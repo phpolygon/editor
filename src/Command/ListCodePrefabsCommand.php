@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Support\PhpCommand;
 use Symfony\Component\Process\Process;
 
 /**
@@ -36,7 +37,7 @@ class ListCodePrefabsCommand implements CommandInterface
 
         try {
             $process = Process::fromShellCommandline(
-                $command,
+                PhpCommand::resolve($command),
                 $context->projectDir !== '' ? $context->projectDir : null,
                 null,
                 null,

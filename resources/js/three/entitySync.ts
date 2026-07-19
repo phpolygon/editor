@@ -12,6 +12,17 @@ const LIGHT_CLASSES = new Set([
     'PHPolygon\\Component\\SpotLight',
 ]);
 
+/**
+ * Three's forward renderer bakes EVERY scene light into each material's shader,
+ * so a scene with hundreds of gameplay lights (a whole city's point lights) blows
+ * past the GPU's uniform budget and every material fails to compile — "shader
+ * error" en masse, and a black viewport. The editor viewport is a structural
+ * preview lit by its own ambient + sun rig (see SceneViewport3D::setup), so it
+ * caps how many game lights it actually instantiates. Enough to convey a small
+ * hand-built scene's lighting; bounded so a huge game scene still renders.
+ */
+const MAX_SCENE_LIGHTS = 8;
+
 function findComponent(entity: EntityNode, suffix: string): ComponentData | undefined {
     return entity.components.find((c) => c._class.endsWith('\\' + suffix) || c._class === suffix);
 }
@@ -96,6 +107,8 @@ export class EntitySync {
     private readonly root: THREE.Object3D;
     private readonly entities = new Map<string, SyncedEntity>();
     private readonly meshRequests = new Map<string, number>();
+    /** Game lights instantiated so far this sync(); capped at MAX_SCENE_LIGHTS. */
+    private lightCount = 0;
 
     /**
      * @param onChanged Called whenever an async mesh/material load applies a
@@ -107,6 +120,7 @@ export class EntitySync {
 
     sync(entities: EntityNode[]): void {
         const seen = new Set<string>();
+        this.lightCount = 0;
         this.walk(entities, this.root, seen);
 
         for (const name of [...this.entities.keys()]) {
@@ -180,8 +194,15 @@ export class EntitySync {
 
         for (const comp of node.components) {
             if (LIGHT_CLASSES.has(comp._class)) {
+                // Cap real lights so a city's worth of point lights doesn't blow
+                // the shader's light budget (black viewport); the viewport's own
+                // ambient + sun still illuminate everything past the cap.
+                if (this.lightCount >= MAX_SCENE_LIGHTS) continue;
                 const light = buildLight(comp);
-                if (light) synced.object.add(light);
+                if (light) {
+                    synced.object.add(light);
+                    this.lightCount++;
+                }
             } else if (comp._class.endsWith('Camera3DComponent') || comp._class.endsWith('Camera3D')) {
                 synced.object.add(buildCameraGizmo(comp));
             }

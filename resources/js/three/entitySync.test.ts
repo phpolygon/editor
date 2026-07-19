@@ -203,6 +203,27 @@ describe('EntitySync', () => {
         expect(lights).toHaveLength(1);
     });
 
+    it('caps the number of real scene lights so a whole city does not blow the shader budget', () => {
+        const lamps: EntityNode[] = [];
+        for (let i = 0; i < 12; i++) {
+            lamps.push(entity(`Lamp${i}`, [
+                transform3D(),
+                { _class: 'PHPolygon\\Component\\PointLight', properties: { intensity: 1 } },
+            ]));
+        }
+        sync.sync(lamps);
+
+        let lights = 0;
+        root.traverse((o) => { if (o instanceof THREE.Light) lights++; });
+        expect(lights).toBe(8); // MAX_SCENE_LIGHTS
+
+        // Re-syncing does not accumulate past the cap (lightCount resets each sync).
+        sync.sync(lamps);
+        lights = 0;
+        root.traverse((o) => { if (o instanceof THREE.Light) lights++; });
+        expect(lights).toBe(8);
+    });
+
     it('entityNameFor walks up parents to find the owning entity', () => {
         sync.sync([entity('Outer', [], [entity('Inner', [transform3D()])])]);
         const inner = sync.getObject('Inner')!;

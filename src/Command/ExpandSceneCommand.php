@@ -7,6 +7,7 @@ namespace PHPolygon\Editor\Command;
 use PHPolygon\Editor\EditorContext;
 use PHPolygon\Editor\Project\ProjectAssetCache;
 use PHPolygon\Editor\Scene\EntityFormatter;
+use PHPolygon\Editor\Support\PhpCommand;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 
@@ -107,7 +108,7 @@ class ExpandSceneCommand implements CommandInterface
             file_put_contents($input, (string) json_encode($sceneData, JSON_UNESCAPED_SLASHES));
 
             $process = Process::fromShellCommandline(
-                $command . ' ' . escapeshellarg($input) . ' ' . escapeshellarg($output),
+                PhpCommand::resolve($command) . ' ' . escapeshellarg($input) . ' ' . escapeshellarg($output),
                 $projectDir !== '' ? $projectDir : null,
                 null,
                 null,

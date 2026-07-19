@@ -3,6 +3,8 @@ import { ref, computed } from 'vue';
 import type { EntityNode } from '@/types';
 import * as commands from '@/bridge/commands';
 import { useProjectStore } from '@/stores/project';
+import { preloadMeshes } from '@/three/meshCache';
+import { preloadMaterials } from '@/three/materialCache';
 
 export type SceneMode = '2d' | '3d';
 
@@ -127,14 +129,40 @@ export const useSceneStore = defineStore('scene', () => {
         loading.value = true;
         try {
             const data = await commands.loadScene(sceneName);
+            // Bulk-preload all geometry/materials in one request BEFORE the
+            // entities land (which triggers the viewport sync), so its per-entity
+            // loadMesh/loadMaterial calls hit the cache instead of firing one
+            // request each — the single-threaded dev server would otherwise
+            // serialise hundreds of round-trips into ~tens of seconds.
+            await preloadAssets();
             sourceName.value = sceneName; // the file basename we loaded from
             name.value = data.name;
             entities.value = normaliseEntities(data.entities);
             mode.value = resolveMode(data.name, entities.value);
             dirty.value = false;
             await expandPreview();
+            // A code-prefab scene's expand may have produced fresh geometry.
+            await preloadAssets();
         } finally {
             loading.value = false;
+        }
+    }
+
+    /**
+     * Fetch every mesh + material for the active project in one request each and
+     * populate the viewport caches. Best-effort: on failure the viewport falls
+     * back to lazy per-entity fetches.
+     */
+    async function preloadAssets() {
+        try {
+            const [meshes, materials] = await Promise.all([
+                commands.getMeshes(),
+                commands.getMaterials(),
+            ]);
+            preloadMeshes(meshes.meshes ?? []);
+            preloadMaterials(materials.materials ?? []);
+        } catch {
+            // best-effort
         }
     }
 
@@ -305,6 +333,7 @@ export const useSceneStore = defineStore('scene', () => {
 
     return {
         name,
+        sourceName,
         entities,
         previewEntities,
         viewEntities,

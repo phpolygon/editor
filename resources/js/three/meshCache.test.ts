@@ -7,7 +7,7 @@ vi.mock('@/bridge/commands', () => ({
     assetFileUrl: (p: string) => `/test-assets/${p}`,
 }));
 
-import { loadMesh, clearMeshCache, placeholderGeometry } from './meshCache';
+import { loadMesh, clearMeshCache, placeholderGeometry, preloadMeshes } from './meshCache';
 import { getMesh } from '@/bridge/commands';
 
 const mockGetMesh = getMesh as unknown as Mock;
@@ -100,6 +100,15 @@ describe('meshCache', () => {
         mockGetMesh.mockResolvedValueOnce(meshData());
         await loadMesh('cube');
         expect(mockGetMesh).toHaveBeenCalledTimes(2);
+    });
+
+    it('preloadMeshes populates the cache so loadMesh serves it without a bridge call', async () => {
+        preloadMeshes([{ ...meshData(), id: 'bulk' }]);
+
+        const geom = await loadMesh('bulk');
+        expect(geom).toBeInstanceOf(THREE.BufferGeometry);
+        expect(geom!.getAttribute('position').count).toBe(3);
+        expect(mockGetMesh).not.toHaveBeenCalled();
     });
 
     it('placeholderGeometry returns a unit BoxGeometry', () => {

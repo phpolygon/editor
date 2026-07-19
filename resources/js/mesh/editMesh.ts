@@ -47,6 +47,51 @@ export function weldPositions(vertices: number[], precision = 4): PositionGroup[
     }));
 }
 
+/** Centroid of the selected welded groups — the pivot a multi-select gizmo sits at. */
+export function centroid(groups: PositionGroup[], selected: Iterable<number>): [number, number, number] {
+    let x = 0;
+    let y = 0;
+    let z = 0;
+    let n = 0;
+    for (const gi of selected) {
+        const g = groups[gi];
+        if (!g) continue;
+        x += g.position[0];
+        y += g.position[1];
+        z += g.position[2];
+        n++;
+    }
+    if (n === 0) return [0, 0, 0];
+    return [x / n, y / n, z / n];
+}
+
+/**
+ * Apply a 4×4 transform (column-major, three.js `Matrix4.elements` order) to
+ * every vertex of the selected welded groups, reading from `base` (the geometry
+ * at drag start) and writing into `out`. Coincident vertices move together
+ * because they share a group. Pure — no three.js — so it's unit-testable.
+ */
+export function applyMatrixToGroups(
+    base: number[],
+    out: number[],
+    groups: PositionGroup[],
+    selected: Iterable<number>,
+    m: ArrayLike<number>,
+): void {
+    for (const gi of selected) {
+        const g = groups[gi];
+        if (!g) continue;
+        for (const vi of g.indices) {
+            const x = base[vi * 3];
+            const y = base[vi * 3 + 1];
+            const z = base[vi * 3 + 2];
+            out[vi * 3] = m[0] * x + m[4] * y + m[8] * z + m[12];
+            out[vi * 3 + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+            out[vi * 3 + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+        }
+    }
+}
+
 /** Move every vertex in a welded group to a new position (mutates in place). */
 export function setGroupPosition(
     vertices: number[],

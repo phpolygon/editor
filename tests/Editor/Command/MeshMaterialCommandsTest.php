@@ -6,7 +6,9 @@ namespace PHPolygon\Editor\Tests\Command;
 
 use PHPUnit\Framework\TestCase;
 use PHPolygon\Editor\Command\GetMaterialCommand;
+use PHPolygon\Editor\Command\GetMaterialsCommand;
 use PHPolygon\Editor\Command\GetMeshCommand;
+use PHPolygon\Editor\Command\GetMeshesCommand;
 use PHPolygon\Editor\Command\ListMaterialsCommand;
 use PHPolygon\Editor\Command\ListMeshesCommand;
 use PHPolygon\Editor\EditorContext;
@@ -139,5 +141,35 @@ class MeshMaterialCommandsTest extends TestCase
     {
         $this->expectException(\RuntimeException::class);
         (new GetMaterialCommand(['id' => 'missing']))->execute($this->context);
+    }
+
+    public function testGetMeshesReturnsEveryMeshInOneCall(): void
+    {
+        $result = (new GetMeshesCommand())->execute($this->context);
+
+        $this->assertArrayHasKey('meshes', $result);
+        $byId = [];
+        foreach ($result['meshes'] as $m) {
+            $byId[$m['id']] = $m;
+        }
+        // Bulk endpoint materialises lazy factories too, and carries buffers.
+        $this->assertArrayHasKey('test_box', $byId);
+        $this->assertArrayHasKey('test_sphere', $byId);
+        $this->assertGreaterThan(0, $byId['test_box']['vertexCount']);
+        $this->assertSame($byId['test_box']['vertexCount'] * 3, count($byId['test_box']['vertices']));
+    }
+
+    public function testGetMaterialsReturnsEveryMaterialInOneCall(): void
+    {
+        $result = (new GetMaterialsCommand())->execute($this->context);
+
+        $this->assertArrayHasKey('materials', $result);
+        $byId = [];
+        foreach ($result['materials'] as $m) {
+            $byId[$m['id']] = $m;
+        }
+        $this->assertArrayHasKey('test_red', $byId);
+        $this->assertSame(1.0, $byId['test_red']['albedo']['r']);
+        $this->assertSame(0.4, $byId['test_red']['roughness']);
     }
 }

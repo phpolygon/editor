@@ -7,7 +7,7 @@ vi.mock('@/bridge/commands', () => ({
     assetFileUrl: (p: string) => `/test-assets/${p}`,
 }));
 
-import { loadMaterial, clearMaterialCache, placeholderMaterial } from './materialCache';
+import { loadMaterial, clearMaterialCache, placeholderMaterial, preloadMaterials } from './materialCache';
 import { getMaterial } from '@/bridge/commands';
 
 const mockGetMaterial = getMaterial as unknown as Mock;
@@ -81,6 +81,14 @@ describe('materialCache', () => {
         mockGetMaterial.mockRejectedValueOnce(new Error('Unknown material'));
         const mat = await loadMaterial('ghost');
         expect(mat).toBeNull();
+    });
+
+    it('preloadMaterials populates the cache so loadMaterial serves it without a bridge call', async () => {
+        preloadMaterials([materialData({ id: 'bulk' })]);
+
+        const mat = await loadMaterial('bulk');
+        expect(mat!.roughness).toBe(0.4);
+        expect(mockGetMaterial).not.toHaveBeenCalled();
     });
 
     it('placeholderMaterial is a pink wireframe', () => {

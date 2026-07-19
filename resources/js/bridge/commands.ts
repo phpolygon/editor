@@ -194,12 +194,24 @@ export function getMesh(id: string): Promise<MeshData> {
     return cmd<MeshData>('get_mesh', { id });
 }
 
+/** Every mesh in one response — preload the whole viewport with one request
+ * instead of one get_mesh per unique mesh (the single-threaded dev server
+ * serialises per-mesh round-trips into seconds for a big scene). */
+export function getMeshes(): Promise<{ meshes: MeshData[] }> {
+    return cmd<{ meshes: MeshData[] }>('get_meshes');
+}
+
 export function listMaterials(): Promise<{ materials: string[] }> {
     return cmd<{ materials: string[] }>('list_materials');
 }
 
 export function getMaterial(id: string): Promise<MaterialData> {
     return cmd<MaterialData>('get_material', { id });
+}
+
+/** Every material in one response — see {@see getMeshes}. */
+export function getMaterials(): Promise<{ materials: MaterialData[] }> {
+    return cmd<{ materials: MaterialData[] }>('get_materials');
 }
 
 /** Save an authored material (MaterialData) under assets/materials/. */
@@ -509,4 +521,15 @@ export function loadMeshAsset(
     name: string,
 ): Promise<{ name: string; nodes: unknown[]; output: string; raw: RawMeshPayload | null }> {
     return cmd('load_mesh_asset', { name });
+}
+
+export function deleteMeshAsset(name: string): Promise<{ deleted: boolean; name: string }> {
+    return cmd('delete_mesh_asset', { name });
+}
+
+export function renameMeshAsset(
+    name: string,
+    newName: string,
+): Promise<{ renamed: boolean; name: string; path: string }> {
+    return cmd('rename_mesh_asset', { name, newName });
 }

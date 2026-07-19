@@ -9,7 +9,9 @@ use PHPolygon\Editor\Project\ProjectAssetCache;
 use PHPolygon\Editor\Scene\EntityFormatter;
 use PHPolygon\Editor\Scene\SceneClassResolver;
 use PHPolygon\Editor\SceneDocument;
+use PHPolygon\Editor\Support\HeadlessEngine;
 use PHPolygon\Editor\Support\Path;
+use PHPolygon\Editor\Support\PhpCommand;
 use PHPolygon\Scene\Scene;
 use ReflectionClass;
 use RuntimeException;
@@ -84,6 +86,12 @@ class LoadSceneCommand implements CommandInterface
             );
         }
 
+        // The scene's build() runs here, in-process. Game build()s routinely use
+        // engine facades (Locale for prompts/labels, Textures for baked assets),
+        // so a headless engine must be booted first or the facade throws
+        // "Facade engine not set". Cheap + side-effect-free (see HeadlessEngine).
+        HeadlessEngine::ensure();
+
         $scene = new $className;
         $data = $context->transpiler->toArray($scene);
 
@@ -110,7 +118,7 @@ class LoadSceneCommand implements CommandInterface
     {
         try {
             $process = Process::fromShellCommandline(
-                $command.' '.escapeshellarg($outPath),
+                PhpCommand::resolve($command).' '.escapeshellarg($outPath),
                 $projectDir !== '' ? $projectDir : null,
                 null,
                 null,

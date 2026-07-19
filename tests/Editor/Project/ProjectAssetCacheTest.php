@@ -70,4 +70,28 @@ class ProjectAssetCacheTest extends TestCase
         $this->assertNull(ProjectAssetCache::material($this->projectDir, 'nope'));
         $this->assertNull(ProjectAssetCache::mesh($this->projectDir, 'nope'));
     }
+
+    public function test_all_meshes_and_materials_return_everything_captured(): void
+    {
+        MaterialRegistry::register('brass', new Material(albedo: new Color(0.8, 0.6, 0.2), roughness: 0.3));
+        MeshRegistry::register('tri', new MeshData(
+            [0, 0, 0, 1, 0, 0, 0, 1, 0],
+            [0, 0, 1, 0, 0, 1, 0, 0, 1],
+            [0, 0, 1, 0, 0, 1],
+            [0, 1, 2],
+        ));
+
+        ProjectAssetCache::capture($this->projectDir);
+        MaterialRegistry::clear();
+        MeshRegistry::clear();
+
+        $meshes = ProjectAssetCache::allMeshes($this->projectDir);
+        $this->assertContains('tri', array_column($meshes, 'id'));
+        $this->assertContains('brass', array_column(ProjectAssetCache::allMaterials($this->projectDir), 'id'));
+
+        // The bulk mesh carries full buffers, not just the id.
+        $tri = array_values(array_filter($meshes, static fn (array $m): bool => $m['id'] === 'tri'))[0];
+        $this->assertSame(3, $tri['vertexCount']);
+        $this->assertSame(1, $tri['triangleCount']);
+    }
 }

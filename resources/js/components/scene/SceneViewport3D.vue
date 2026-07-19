@@ -25,6 +25,9 @@ let resizeObserver: ResizeObserver | null = null;
 let rafHandle = 0;
 let pointerDownAt: { x: number; y: number } | null = null;
 let suppressSyncWhileDragging = false;
+// The scene we last auto-framed the camera on, so a fresh scene load frames once
+// (revealing large game worlds) without resetting the camera on every edit.
+let framedScene = '';
 
 // On-demand rendering: only redraw when something actually changed, instead of
 // running the full scene (hundreds of objects + large terrain) at 60fps while
@@ -157,6 +160,37 @@ function focusOnSelection(): void {
     orbit.update();
 }
 
+/**
+ * Frame the camera on the whole scene's bounds. Game worlds span hundreds of
+ * units and are authored around a spawn point far from the origin, so the
+ * default (5,5,5) camera + far=1000 would stare past everything (an apparently
+ * empty viewport). Called once when a fresh scene's entities arrive. Uses the
+ * entity bounds — which include every placed prefab's expanded geometry — so the
+ * far-flung landmarks/terminals come into view instead of just the spawn.
+ */
+function frameAll(): boolean {
+    if (!entityRoot || !camera || !orbit) return false;
+    const box = new THREE.Box3().setFromObject(entityRoot);
+    // Empty until the scene's geometry (or its async-expanded prefab preview)
+    // has populated the tree — the caller retries on the next entity change.
+    if (box.isEmpty()) return false;
+
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3()).length() || 1;
+
+    const dir = new THREE.Vector3(1, 0.7, 1).normalize();
+    orbit.target.copy(center);
+    camera.position.copy(center).add(dir.multiplyScalar(size * 0.6));
+    // Scale the clip planes to the framed extent so nothing is culled.
+    camera.near = Math.max(0.1, size / 2000);
+    camera.far = Math.max(1000, size * 4);
+    camera.updateProjectionMatrix();
+    camera.lookAt(center);
+    orbit.update();
+    invalidate();
+    return true;
+}
+
 function onKeyDown(event: KeyboardEvent): void {
     if (!gizmo) return;
     const tag = (event.target as HTMLElement | null)?.tagName;
@@ -236,6 +270,9 @@ function setup(): void {
 
     sync = new EntitySync(entityRoot, invalidate);
     sync.sync(sceneStore.viewEntities);
+    if (sceneStore.name && sceneStore.viewEntities.length > 0 && frameAll()) {
+        framedScene = sceneStore.name;
+    }
 
     gizmo = new TransformControls(camera, renderer.domElement);
     gizmo.setSize(0.8);
@@ -312,6 +349,13 @@ watch(
         sync?.sync(entities);
         refreshOutline();
         attachGizmo();
+        // Frame the camera the first time a freshly loaded scene yields non-empty
+        // bounds, so the whole world (incl. its async-expanded prefab geometry)
+        // is visible. Retries across entity changes until frameAll() succeeds
+        // (the authored anchors alone have no geometry to bound).
+        if (sceneStore.name && sceneStore.name !== framedScene && entities.length > 0 && frameAll()) {
+            framedScene = sceneStore.name;
+        }
         invalidate();
     },
     { deep: true },

@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, provide, ref } from 'vue';
 import Toolbar from './Toolbar.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
+import SceneLoadingOverlay from './SceneLoadingOverlay.vue';
 import AssetBrowserPanel from '@/components/assets/AssetBrowserPanel.vue';
 import ToastContainer from '@/components/ui/ToastContainer.vue';
 import DialogHost from '@/components/ui/DialogHost.vue';
@@ -115,5 +116,6 @@ onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
         <ToastContainer />
         <DialogHost />
         <ContextMenu />
+        <SceneLoadingOverlay />
     </div>
 </template>

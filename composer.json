@@ -22,7 +22,7 @@
         "laravel/mcp": "*",
         "laravel/tinker": "^3.0",
         "nativephp/desktop": "^2.1",
-        "phpolygon/phpolygon": "^0.35"
+        "phpolygon/phpolygon": "^0.36"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

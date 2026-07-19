@@ -9,10 +9,20 @@ import {
     type GraphNode,
     type ProceduralGraphData,
 } from '@/prefab/graph';
-import { evaluateProceduralMesh, saveMesh, saveRawMesh, listMeshAssets, loadMeshAsset } from '@/bridge/commands';
+import {
+    evaluateProceduralMesh,
+    saveMesh,
+    saveRawMesh,
+    listMeshAssets,
+    loadMeshAsset,
+    deleteMeshAsset,
+    renameMeshAsset,
+    listMeshes,
+    getMesh,
+} from '@/bridge/commands';
 import { computeNormals, flipNormals, type RawMeshData } from '@/mesh/editMesh';
 import { importMeshFile } from '@/mesh/importMesh';
-import type { MeshData } from '@/types';
+import type { MeshData, MeshListEntry } from '@/types';
 
 /**
  * State for the mesh editor workspace: a standalone procedural-mesh node graph
@@ -27,6 +37,15 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
     const error = ref<string | null>(null);
     const evaluating = ref(false);
     const assets = ref<{ name: string; path: string }[]>([]);
+
+    // Meshes the project/engine already knows (MeshRegistry + per-project asset
+    // cache), as opposed to the editor's own saved .mesh.json graphs. These are
+    // read-only sources you can pull into the editor as baked geometry.
+    const projectMeshes = ref<MeshListEntry[]>([]);
+
+    // The saved asset currently open in the editor (null = new / unsaved). Lets
+    // the UI show what's being edited and lets "Save" overwrite it in place.
+    const loadedAssetName = ref<string | null>(null);
 
     // Vertex-editing: `editedMesh` is a mutable baked copy of the current mesh;
     // while in edit mode the graph is inert and this raw geometry is the source.
@@ -50,6 +69,10 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         graph.value = starterGraph();
         preview.value = null;
         error.value = null;
+        loadedAssetName.value = null;
+        editMode.value = false;
+        editedMesh.value = null;
+        name.value = 'mesh';
     }
 
     /** Evaluate the current graph into MeshData via the backend. */
@@ -78,6 +101,34 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         }
     }
 
+    /** Registered project/engine meshes (from list_meshes), sorted by id. */
+    async function refreshProjectMeshes() {
+        try {
+            projectMeshes.value = (await listMeshes()).meshes;
+        } catch {
+            projectMeshes.value = [];
+        }
+    }
+
+    /**
+     * Pull a registered project mesh into the editor as baked, editable
+     * geometry. It has no generating graph, so it opens straight into
+     * vertex-edit mode; saving writes a new .mesh.json asset (the source mesh
+     * is read-only and untouched).
+     */
+    async function loadProjectMesh(id: string) {
+        const data: MeshData = await getMesh(id);
+        editedMesh.value = {
+            vertices: [...data.vertices],
+            normals: [...(data.normals ?? [])],
+            uvs: [...(data.uvs ?? [])],
+            indices: [...data.indices],
+        };
+        name.value = id;
+        loadedAssetName.value = null; // not one of our saved assets — Save makes a copy
+        editMode.value = true;
+    }
+
     /** Save the current graph as a reusable mesh asset. */
     async function save() {
         const result = validate(graph.value);
@@ -86,6 +137,8 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
             throw new Error(error.value);
         }
         const saved = await saveMesh(name.value.trim() || 'mesh', graph.value.nodes, graph.value.output);
+        name.value = saved.name;
+        loadedAssetName.value = saved.name;
         await refreshAssets();
         return saved;
     }
@@ -94,6 +147,7 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
     async function load(assetName: string) {
         const data = await loadMeshAsset(assetName);
         name.value = data.name;
+        loadedAssetName.value = data.name;
         if (data.raw) {
             editedMesh.value = {
                 vertices: [...data.raw.vertices],
@@ -147,6 +201,7 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         const raw = await importMeshFile(file);
         editedMesh.value = raw;
         name.value = file.name.replace(/\.[^.]+$/, '') || 'imported';
+        loadedAssetName.value = null; // a fresh import isn't a saved asset yet
         editMode.value = true;
     }
 
@@ -155,10 +210,36 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         const meshName = name.value.trim() || 'mesh';
         if (editMode.value && editedMesh.value) {
             const saved = await saveRawMesh(meshName, editedMesh.value);
+            name.value = saved.name;
+            loadedAssetName.value = saved.name;
             await refreshAssets();
             return saved;
         }
         return save();
+    }
+
+    /** Save under a new name (Save As), leaving the original asset untouched. */
+    async function saveAs(newName: string) {
+        name.value = newName.trim() || 'mesh';
+        return saveCurrent();
+    }
+
+    /** Delete a saved asset; if it's the one open, mark the editor as unsaved. */
+    async function deleteAsset(assetName: string) {
+        await deleteMeshAsset(assetName);
+        if (loadedAssetName.value === assetName) loadedAssetName.value = null;
+        await refreshAssets();
+    }
+
+    /** Rename a saved asset, keeping it open if it was the one being edited. */
+    async function renameAsset(assetName: string, newName: string) {
+        const result = await renameMeshAsset(assetName, newName);
+        if (loadedAssetName.value === assetName) {
+            loadedAssetName.value = result.name;
+            name.value = result.name;
+        }
+        await refreshAssets();
+        return result;
     }
 
     return {
@@ -168,6 +249,8 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         error,
         evaluating,
         assets,
+        projectMeshes,
+        loadedAssetName,
         editMode,
         editedMesh,
         setGraph,
@@ -175,8 +258,13 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         reset,
         evaluate,
         refreshAssets,
+        refreshProjectMeshes,
+        loadProjectMesh,
         save,
         saveCurrent,
+        saveAs,
+        deleteAsset,
+        renameAsset,
         load,
         enterEditMode,
         exitEditMode,

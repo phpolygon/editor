@@ -64,6 +64,20 @@ export function setMesh(id: string, data: MeshData): THREE.BufferGeometry {
     return geometry;
 }
 
+/**
+ * Populate the cache from a bulk get_meshes fetch, so the subsequent per-entity
+ * loadMesh() calls hit the cache instead of firing one request each.
+ */
+export function preloadMeshes(list: MeshData[]): void {
+    for (const data of list) {
+        if (!data.id) continue;
+        const cached = cache.get(data.id);
+        if (cached && cached.version === data.version) continue;
+        cached?.geometry.dispose();
+        cache.set(data.id, { geometry: buildGeometry(data), version: data.version });
+    }
+}
+
 export function clearMeshCache(): void {
     for (const { geometry } of cache.values()) {
         geometry.dispose();
