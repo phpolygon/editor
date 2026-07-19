@@ -13,6 +13,8 @@ import {
     evaluateProceduralMesh,
     saveMesh,
     saveRawMesh,
+    saveMaterial,
+    saveTexture,
     listMeshAssets,
     loadMeshAsset,
     deleteMeshAsset,
@@ -21,7 +23,7 @@ import {
     getMesh,
 } from '@/bridge/commands';
 import { computeNormals, flipNormals, type RawMeshData } from '@/mesh/editMesh';
-import { importMeshFile } from '@/mesh/importMesh';
+import { importMeshParts } from '@/mesh/importMesh';
 import type { MeshData, MeshListEntry } from '@/types';
 
 /**
@@ -196,13 +198,42 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         if (editedMesh.value) editedMesh.value = flipNormals(editedMesh.value);
     }
 
-    /** Import an external 3D file (OBJ/STL/glTF) as an editable raw mesh. */
-    async function importFile(file: File) {
-        const raw = await importMeshFile(file);
-        editedMesh.value = raw;
-        name.value = file.name.replace(/\.[^.]+$/, '') || 'imported';
-        loadedAssetName.value = null; // a fresh import isn't a saved asset yet
+    /**
+     * Import an external 3D file. OBJ/STL come in as a single editable raw mesh;
+     * glTF/GLB are split per material, and each sub-mesh, its translated material
+     * and any base-colour texture are saved straight to the project's assets. The
+     * first sub-mesh is opened for viewing. Returns how much was imported so the
+     * caller can report it. */
+    async function importFile(file: File): Promise<{ meshes: number; materials: number }> {
+        const parts = await importMeshParts(file);
+
+        const savedMeshes: { name: string; mesh: RawMeshData }[] = [];
+        let materialCount = 0;
+
+        for (const part of parts) {
+            if (part.material) {
+                if (part.texture) {
+                    const tex = await saveTexture(part.texture.suggestedName, part.texture.dataUrl);
+                    part.material.albedoTexture = tex.relativePath;
+                }
+                part.material.id = part.name;
+                await saveMaterial(part.material);
+                materialCount++;
+            }
+            const saved = await saveRawMesh(part.name, part.mesh);
+            savedMeshes.push({ name: saved.name, mesh: part.mesh });
+        }
+
+        await refreshAssets();
+
+        // Open the first sub-mesh for viewing; it (and the rest) are already saved.
+        const first = savedMeshes[0];
+        editedMesh.value = first.mesh;
+        name.value = first.name;
+        loadedAssetName.value = first.name;
         editMode.value = true;
+
+        return { meshes: savedMeshes.length, materials: materialCount };
     }
 
     /** Save the current mesh — raw geometry in edit mode, otherwise the graph. */

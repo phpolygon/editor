@@ -429,6 +429,15 @@ export function saveAudio(
     return cmd('save_audio', { name, data });
 }
 
+/** Save an imported texture (PNG base64 or data URL) to assets/textures/. The
+ * returned relativePath is what a material's `albedoTexture` references. */
+export function saveTexture(
+    name: string,
+    data: string,
+): Promise<{ saved: boolean; name: string; path: string; relativePath: string }> {
+    return cmd('save_texture', { name, data });
+}
+
 export function spawnPrefab(
     path: string,
     parent: string | null = null,

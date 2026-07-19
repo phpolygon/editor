@@ -67,8 +67,10 @@ async function onImport(e: Event) {
     input.value = ''; // allow re-importing the same file
     if (!file) return;
     try {
-        await store.importFile(file);
-        addToast(`Imported ${file.name}`, 'success');
+        const { meshes, materials } = await store.importFile(file);
+        const parts = [`${meshes} mesh${meshes === 1 ? '' : 'es'}`];
+        if (materials > 0) parts.push(`${materials} material${materials === 1 ? '' : 's'}`);
+        addToast(`Imported ${file.name} — ${parts.join(', ')}`, 'success');
     } catch (err: any) {
         addToast(err?.message ?? 'Import failed', 'error');
     }

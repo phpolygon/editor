@@ -29,6 +29,8 @@ Common commands (name → args):
     list_mesh_assets, load_mesh_asset {name}, list_meshes, get_mesh {id}.
   Material/Shader: save_material {material}, get_material {id}, list_material_assets,
     save_shader {name,vertex,fragment,graph?}.
+  Texture: save_texture {name,data} (data = base64/data-URL PNG → assets/textures/<name>.png;
+    the returned relativePath is what a material's albedoTexture references).
   Audio: save_audio {name,data} (data = base64 WAV).
   UI: list_widget_types, create_ui_layout {name,rootType?}, add_widget {parentId,type},
     update_widget_property {id,property,value}, set_widget_binding {id,property,path},

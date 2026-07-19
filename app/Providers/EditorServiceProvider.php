@@ -58,6 +58,7 @@ use PHPolygon\Editor\Command\SavePanelLayoutCommand;
 use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SaveSceneCommand;
 use PHPolygon\Editor\Command\SaveShaderCommand;
+use PHPolygon\Editor\Command\SaveTextureCommand;
 use PHPolygon\Editor\Command\SaveUiLayoutCommand;
 use PHPolygon\Editor\Command\SetWidgetBindingCommand;
 use PHPolygon\Editor\Command\SetWidgetEventCommand;
@@ -239,6 +240,9 @@ class EditorServiceProvider extends ServiceProvider
 
             // Audio (wave synthesizer)
             $bus->register('save_audio', SaveAudioCommand::class);
+
+            // Textures (baked out during mesh import)
+            $bus->register('save_texture', SaveTextureCommand::class);
 
             // Mesh assets (mesh editor)
             $bus->register('save_mesh', SaveMeshCommand::class);

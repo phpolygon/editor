@@ -3,6 +3,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
+        "prebuild": "node scripts/copy-draco.mjs",
+        "postinstall": "node scripts/copy-draco.mjs",
         "dev": "vite",
         "test": "vitest run",
         "test:watch": "vitest",
