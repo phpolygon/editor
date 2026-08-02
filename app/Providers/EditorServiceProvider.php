@@ -57,6 +57,7 @@ use PHPolygon\Editor\Command\RenderUiLayoutCommand;
 use PHPolygon\Editor\Command\ReparentEntityCommand;
 use PHPolygon\Editor\Command\ReparentWidgetCommand;
 use PHPolygon\Editor\Command\SaveAudioCommand;
+use PHPolygon\Editor\Command\ImportGltfSceneCommand;
 use PHPolygon\Editor\Command\SaveMaterialCommand;
 use PHPolygon\Editor\Command\SaveMeshCommand;
 use PHPolygon\Editor\Command\SavePanelLayoutCommand;
@@ -252,6 +253,7 @@ class EditorServiceProvider extends ServiceProvider
 
             // Mesh assets (mesh editor)
             $bus->register('save_mesh', SaveMeshCommand::class);
+            $bus->register('import_gltf_scene', ImportGltfSceneCommand::class);
             $bus->register('list_mesh_assets', ListMeshAssetsCommand::class);
             $bus->register('load_mesh_asset', LoadMeshAssetCommand::class);
             $bus->register('delete_mesh_asset', DeleteMeshAssetCommand::class);
