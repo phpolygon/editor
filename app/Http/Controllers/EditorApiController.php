@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\GameBuildRunner;
+use App\Services\GameRunner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Native\Desktop\Dialog;
@@ -217,6 +218,56 @@ class EditorApiController extends Controller
     public function buildStatus(Request $request, GameBuildRunner $runner): JsonResponse
     {
         return response()->json(['ok' => true, 'data' => $runner->status((string) $request->input('id', ''))]);
+    }
+
+    /**
+     * Launch the open project for the Play button.
+     *
+     * The two failure modes worth catching up front are a project with no
+     * dependencies installed (the entry point would die on a missing
+     * `vendor/autoload.php`) and a missing entry point — both produce a
+     * cryptic PHP error deep in a detached log otherwise.
+     */
+    public function playStart(EditorContext $context, GameRunner $runner): JsonResponse
+    {
+        $projectDir = $context->projectDir;
+        if ($projectDir === '' || ! is_dir($projectDir)) {
+            return response()->json(['ok' => false, 'error' => 'No project is open'], 422);
+        }
+
+        if (! is_file(Path::join($projectDir, 'vendor/autoload.php'))) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'Project dependencies are not installed yet. Install them first.',
+            ], 422);
+        }
+
+        $command = $context->manifest->resolvedRunCommand();
+        if ($context->manifest->runCommand === ''
+            && ! is_file(Path::join($projectDir, 'game.php'))) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'No game.php in the project. Add one, or set "runCommand" in phpolygon.project.json.',
+            ], 422);
+        }
+
+        return response()->json(['ok' => true, 'data' => [
+            'playId' => $runner->start($projectDir, $command),
+            'command' => $command,
+        ]]);
+    }
+
+    public function playStatus(Request $request, GameRunner $runner): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $runner->status((string) $request->input('id', ''))]);
+    }
+
+    public function playStop(Request $request, GameRunner $runner): JsonResponse
+    {
+        $id = (string) $request->input('id', '');
+        $runner->stop($id !== '' ? $id : $runner->currentId());
+
+        return response()->json(['ok' => true, 'data' => ['stopping' => true]]);
     }
 
     public function browseAsset(EditorContext $context): JsonResponse

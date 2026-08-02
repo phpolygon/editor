@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, provide, ref } from 'vue';
 import Toolbar from './Toolbar.vue';
+import GameConsole from './GameConsole.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import SceneLoadingOverlay from './SceneLoadingOverlay.vue';
 import AssetBrowserPanel from '@/components/assets/AssetBrowserPanel.vue';
@@ -112,6 +113,10 @@ onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
                 <AssetBrowserPanel />
             </div>
         </div>
+
+        <!-- Game output sits below the whole grid: it belongs to the play
+             session, not to any one workspace. -->
+        <GameConsole v-if="projectStore.opened" />
 
         <ToastContainer />
         <DialogHost />

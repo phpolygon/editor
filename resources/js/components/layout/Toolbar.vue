@@ -21,6 +21,7 @@ import {
     Image,
     SquareDashed,
     Film,
+    Terminal,
 } from 'lucide-vue-next';
 import { useSceneStore } from '@/stores/scene';
 import { useEditorStore } from '@/stores/editor';
@@ -126,8 +127,37 @@ async function saveAsPrefab() {
     }
 }
 
-function togglePlay() {
-    editorStore.playing ? editorStore.stop() : editorStore.play();
+/**
+ * Start or stop the game.
+ *
+ * Saves a dirty scene first: the game loads scene files from disk, so playing
+ * without saving would silently run the previous state — the single most
+ * confusing thing a Play button can do.
+ */
+async function togglePlay() {
+    if (editorStore.playing) {
+        await editorStore.stop();
+        addToast('Game stopped', 'info');
+        return;
+    }
+
+    if (!projectStore.opened) {
+        addToast('Open a project before playing', 'error');
+        return;
+    }
+
+    if (sceneStore.dirty) {
+        try {
+            await sceneStore.save();
+        } catch (e: any) {
+            addToast(e?.message ?? 'Could not save the scene before playing', 'error');
+            return;
+        }
+    }
+
+    const started = await editorStore.play();
+    if (started) addToast('Game started', 'success');
+    else if (editorStore.playError) addToast(editorStore.playError, 'error');
 }
 
 async function rebuild() {
@@ -264,10 +294,18 @@ async function switchScene(sceneName: string) {
             <Button
                 :icon="editorStore.playing ? Square : Play"
                 :variant="editorStore.playing ? 'danger' : 'success'"
+                :disabled="editorStore.playStarting"
                 @click="togglePlay"
             >
-                {{ editorStore.playing ? 'Stop' : 'Play' }}
+                {{ editorStore.playing ? 'Stop' : editorStore.playStarting ? 'Starting…' : 'Play' }}
             </Button>
+            <IconButton
+                v-if="projectStore.opened"
+                :icon="Terminal"
+                :active="editorStore.consoleOpen"
+                label="Game output — stdout and errors from the running game"
+                @click="editorStore.toggleConsole()"
+            />
             <IconButton
                 v-if="projectStore.opened"
                 :icon="Hammer"

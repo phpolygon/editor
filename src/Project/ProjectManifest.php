@@ -43,7 +43,21 @@ class ProjectManifest
         public readonly string $liveWorldCommand = '',
         public readonly string $prefabsCommand = '',
         public readonly string $expandCommand = '',
+        public readonly string $runCommand = '',
     ) {}
+
+    /**
+     * The command the editor's Play button runs, with cwd = the project dir.
+     *
+     * Falls back to the entry point `phpolygon-project create` scaffolds, so
+     * Play works in a generated project without any manifest entry. A project
+     * with a different layout — a launcher script, extra ini flags — declares
+     * `runCommand` instead.
+     */
+    public function resolvedRunCommand(): string
+    {
+        return $this->runCommand !== '' ? $this->runCommand : 'php game.php';
+    }
 
     /** @return array<string, mixed> */
     public function toArray(): array
@@ -64,6 +78,7 @@ class ProjectManifest
             'liveWorldCommand' => $this->liveWorldCommand,
             'prefabsCommand' => $this->prefabsCommand,
             'expandCommand' => $this->expandCommand,
+            'runCommand' => $this->runCommand,
         ];
     }
 }

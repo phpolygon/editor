@@ -66,6 +66,7 @@ class ProjectLoader
             liveWorldCommand: is_string($data['liveWorldCommand'] ?? null) ? $data['liveWorldCommand'] : '',
             prefabsCommand: is_string($data['prefabsCommand'] ?? null) ? $data['prefabsCommand'] : '',
             expandCommand: is_string($data['expandCommand'] ?? null) ? $data['expandCommand'] : '',
+            runCommand: is_string($data['runCommand'] ?? null) ? $data['runCommand'] : '',
         );
     }
 
