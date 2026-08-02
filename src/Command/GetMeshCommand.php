@@ -6,6 +6,7 @@ namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
 use PHPolygon\Editor\Project\ProjectAssetCache;
+use PHPolygon\Editor\Project\RawMeshAssets;
 use PHPolygon\Geometry\MeshRegistry;
 use RuntimeException;
 
@@ -30,6 +31,13 @@ class GetMeshCommand implements CommandInterface
         $cached = ProjectAssetCache::mesh($context->projectDir, $id);
         if ($cached !== null) {
             return $cached;
+        }
+
+        // Durable fallback: a raw mesh authored/imported on disk renders even
+        // after the registry + temp cache have gone cold.
+        $raw = RawMeshAssets::load($context->getAssetsDir(), $id);
+        if ($raw !== null) {
+            return $raw;
         }
 
         throw new RuntimeException("Unknown mesh: {$id}");

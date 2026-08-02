@@ -6,6 +6,7 @@ namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
 use PHPolygon\Editor\Project\ProjectAssetCache;
+use PHPolygon\Editor\Project\RawMeshAssets;
 use PHPolygon\Geometry\MeshRegistry;
 
 /**
@@ -24,6 +25,13 @@ class GetMeshesCommand implements CommandInterface
     public function execute(EditorContext $context): array
     {
         $byId = [];
+
+        // Lowest priority: raw meshes authored/imported on disk (durable across
+        // sessions, but overridden by a fresher cache snapshot or live build).
+        foreach (RawMeshAssets::all($context->getAssetsDir()) as $id => $mesh) {
+            $byId[$id] = $mesh;
+        }
+
         foreach (ProjectAssetCache::allMeshes($context->projectDir) as $mesh) {
             $id = $mesh['id'] ?? null;
             if (is_string($id)) {
