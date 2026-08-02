@@ -15,7 +15,12 @@ use PHPolygon\Editor\Command\CreateSceneCommand;
 use PHPolygon\Editor\Command\CreateSpriteCommand;
 use PHPolygon\Editor\Command\CreateUiLayoutCommand;
 use PHPolygon\Editor\Command\DeleteEntityCommand;
+use PHPolygon\Editor\Command\BakeTerrainMeshCommand;
+use PHPolygon\Editor\Command\CreateTerrainEntityCommand;
 use PHPolygon\Editor\Command\DeleteMeshAssetCommand;
+use PHPolygon\Editor\Command\DeleteTerrainAssetCommand;
+use PHPolygon\Editor\Command\ListTerrainAssetsCommand;
+use PHPolygon\Editor\Command\LoadTerrainCommand;
 use PHPolygon\Editor\Command\EditorCommandBus;
 use PHPolygon\Editor\Command\EvaluateProceduralMeshCommand;
 use PHPolygon\Editor\Command\ExpandSceneCommand;
@@ -58,6 +63,7 @@ use PHPolygon\Editor\Command\SavePanelLayoutCommand;
 use PHPolygon\Editor\Command\SavePrefabCommand;
 use PHPolygon\Editor\Command\SaveSceneCommand;
 use PHPolygon\Editor\Command\SaveShaderCommand;
+use PHPolygon\Editor\Command\SaveTerrainCommand;
 use PHPolygon\Editor\Command\SaveTextureCommand;
 use PHPolygon\Editor\Command\SaveUiLayoutCommand;
 use PHPolygon\Editor\Command\SetWidgetBindingCommand;
@@ -250,6 +256,14 @@ class EditorServiceProvider extends ServiceProvider
             $bus->register('load_mesh_asset', LoadMeshAssetCommand::class);
             $bus->register('delete_mesh_asset', DeleteMeshAssetCommand::class);
             $bus->register('rename_mesh_asset', RenameMeshAssetCommand::class);
+
+            // Terrain assets (terrain editor)
+            $bus->register('save_terrain', SaveTerrainCommand::class);
+            $bus->register('load_terrain', LoadTerrainCommand::class);
+            $bus->register('list_terrain_assets', ListTerrainAssetsCommand::class);
+            $bus->register('delete_terrain_asset', DeleteTerrainAssetCommand::class);
+            $bus->register('bake_terrain_mesh', BakeTerrainMeshCommand::class);
+            $bus->register('create_terrain_entity', CreateTerrainEntityCommand::class);
 
             // UI layout (widget-tree) editing
             $bus->register('list_ui_layouts', ListUiLayoutsCommand::class);

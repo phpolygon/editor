@@ -2,8 +2,19 @@ import * as THREE from 'three';
 import { loadMesh, placeholderGeometry } from './meshCache';
 import { loadMaterial, placeholderMaterial } from './materialCache';
 import { previewProceduralMesh } from './proceduralPreview';
+import { heightmapFromEncoded } from '@/terrain/heightmap';
+import { buildTerrainGeometry } from '@/terrain/terrainMesh';
 import type { GraphNode } from '@/prefab/graph';
 import type { ComponentData, EntityNode } from '@/types';
+
+/**
+ * Default look for a terrain that names no material — a matte earth tone rather
+ * than the magenta wireframe placeholder, because an unassigned terrain
+ * material is a normal authoring state, not an error.
+ */
+function terrainMaterial(): THREE.MeshStandardMaterial {
+    return new THREE.MeshStandardMaterial({ color: 0x8a9585, roughness: 0.9, metalness: 0 });
+}
 
 const LIGHT_CLASSES = new Set([
     'PHPolygon\\Component\\AmbientLight',
@@ -180,7 +191,13 @@ export class EntitySync {
 
         const meshRenderer = findComponent(node, 'MeshRenderer');
         const proceduralMesh = findComponent(node, 'ProceduralMesh');
-        if (proceduralMesh) {
+        const terrain = findComponent(node, 'Terrain');
+        if (terrain) {
+            // At runtime a Terrain builds chunk child entities, which do not
+            // exist in the scene document. The viewport therefore renders the
+            // terrain itself, straight from the component's heightmap.
+            this.applyTerrain(synced, terrain, meshRenderer);
+        } else if (proceduralMesh) {
             // Procedural geometry drives the mesh; a MeshRenderer, if present,
             // still supplies material + visibility.
             this.applyProceduralMesh(synced, proceduralMesh, meshRenderer);
@@ -249,6 +266,72 @@ export class EntitySync {
                 synced.meshChild.material = mat ?? placeholderMaterial();
                 this.onChanged();
             });
+        }
+    }
+
+    /**
+     * Render a Terrain component's heightmap directly.
+     *
+     * Unlike meshes, this needs no backend round trip: the heightmap travels in
+     * the component itself, and the editor shares the engine's geometry
+     * algorithm, so the terrain can be built synchronously and stays correct
+     * while it is being sculpted in the viewport.
+     *
+     * Built unchunked — chunking exists for runtime culling, which a single
+     * always-visible preview does not benefit from.
+     */
+    private applyTerrain(
+        synced: SyncedEntity,
+        comp: ComponentData,
+        meshRenderer: ComponentData | undefined,
+    ): void {
+        const props = comp.properties;
+        const numberOr = (value: unknown, fallback: number): number =>
+            typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+        const options = {
+            gridWidth: Math.max(2, Math.round(numberOr(props.gridWidth, 129))),
+            gridDepth: Math.max(2, Math.round(numberOr(props.gridDepth, 129))),
+            sizeX: numberOr(props.sizeX, 256),
+            sizeZ: numberOr(props.sizeZ, 256),
+            minHeight: numberOr(props.minHeight, 0),
+            maxHeight: numberOr(props.maxHeight, 50),
+        };
+        const heights = typeof props.heights === 'string' ? props.heights : '';
+        const heightmap = heightmapFromEncoded(options, heights);
+
+        const mesh = this.ensureMeshChild(synced);
+        mesh.visible = meshRenderer ? meshRenderer.properties.visible !== false : true;
+        mesh.userData.terrain = heightmap;
+
+        const geometry = buildTerrainGeometry(heightmap);
+        const buffer = new THREE.BufferGeometry();
+        buffer.setAttribute('position', new THREE.BufferAttribute(geometry.positions, 3));
+        buffer.setAttribute('normal', new THREE.BufferAttribute(geometry.normals, 3));
+        buffer.setAttribute('uv', new THREE.BufferAttribute(geometry.uvs, 2));
+        buffer.setIndex(new THREE.BufferAttribute(geometry.indices, 1));
+        buffer.computeBoundingSphere();
+
+        mesh.geometry.dispose();
+        mesh.geometry = buffer;
+
+        const materialId = typeof props.materialId === 'string' && props.materialId !== ''
+            ? props.materialId
+            : meshRenderer && typeof meshRenderer.properties.materialId === 'string'
+              ? meshRenderer.properties.materialId
+              : '';
+
+        const reqId = (this.meshRequests.get(synced.name) ?? 0) + 1;
+        this.meshRequests.set(synced.name, reqId);
+
+        if (materialId) {
+            void loadMaterial(materialId).then((mat) => {
+                if (this.meshRequests.get(synced.name) !== reqId || !synced.meshChild) return;
+                synced.meshChild.material = mat ?? placeholderMaterial();
+                this.onChanged();
+            });
+        } else {
+            mesh.material = terrainMaterial();
         }
     }
 

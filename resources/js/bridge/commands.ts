@@ -542,3 +542,121 @@ export function renameMeshAsset(
 ): Promise<{ renamed: boolean; name: string; path: string }> {
     return cmd('rename_mesh_asset', { name, newName });
 }
+
+// ── Terrain assets (terrain editor) ─────────────────────────────────────────
+
+/**
+ * Wire shape of a `.terrain.json` asset. `heights`, `splat` and `densityMap`
+ * are base64 payloads rather than number arrays: a 257x257 terrain is 66k
+ * samples, and sending those as JSON numbers costs roughly an order of
+ * magnitude more than the quantised binary form the engine stores anyway.
+ */
+export interface TerrainLayerPayload {
+    id: string;
+    name: string;
+    materialId: string;
+    uvScale: number;
+    minHeight: number;
+    maxHeight: number;
+    minSlope: number;
+    maxSlope: number;
+}
+
+export interface TerrainScatterPayload {
+    id: string;
+    name: string;
+    meshId: string;
+    materialId: string;
+    seed: number;
+    density: number;
+    densityMap: string;
+    minHeight: number;
+    maxHeight: number;
+    minSlope: number;
+    maxSlope: number;
+    minScale: number;
+    maxScale: number;
+    alignToNormal: boolean;
+    randomYaw: number;
+}
+
+export interface TerrainPayload {
+    name: string;
+    version?: number;
+    gridWidth: number;
+    gridDepth: number;
+    sizeX: number;
+    sizeZ: number;
+    minHeight: number;
+    maxHeight: number;
+    heights: string;
+    chunkSize: number;
+    materialId: string;
+    layers: TerrainLayerPayload[];
+    splat: string;
+    scatter: TerrainScatterPayload[];
+}
+
+export function saveTerrain(
+    terrain: TerrainPayload,
+): Promise<{ saved: boolean; name: string; path: string; relativePath: string }> {
+    return cmd('save_terrain', terrain as unknown as Record<string, unknown>);
+}
+
+export function loadTerrain(name: string): Promise<TerrainPayload> {
+    return cmd('load_terrain', { name });
+}
+
+export function listTerrainAssets(): Promise<{ terrains: { name: string; path: string }[] }> {
+    return cmd('list_terrain_assets', {});
+}
+
+export function deleteTerrainAsset(name: string): Promise<{ deleted: boolean; name: string }> {
+    return cmd('delete_terrain_asset', { name });
+}
+
+export interface BakedTerrainMesh {
+    name: string;
+    chunkX: number;
+    chunkZ: number;
+    vertices: number[];
+    normals: number[];
+    uvs: number[];
+    indices: number[];
+    vertexCount: number;
+    triangleCount: number;
+    relativePath: string | null;
+}
+
+/**
+ * Build terrain geometry through the engine's own mesh builder — the
+ * authoritative counterpart to the client-side preview builder, and the way to
+ * export a terrain as plain mesh assets.
+ */
+export function bakeTerrainMesh(args: {
+    name?: string;
+    terrain?: TerrainPayload;
+    chunked?: boolean;
+    save?: boolean;
+    meshName?: string;
+}): Promise<{ terrain: string; chunked: boolean; saved: boolean; meshes: BakedTerrainMesh[] }> {
+    return cmd('bake_terrain_mesh', args as Record<string, unknown>);
+}
+
+/** Place a saved terrain into the active scene as an entity. */
+export function createTerrainEntity(args: {
+    name: string;
+    entityName?: string;
+    parent?: string | null;
+    collider?: boolean;
+    replace?: boolean;
+}): Promise<{
+    created: string;
+    terrain: string;
+    parent: string | null;
+    collider: boolean;
+    /** How many scatter sets were copied onto the entity's TerrainScatter. */
+    scatterSets: number;
+}> {
+    return cmd('create_terrain_entity', args as Record<string, unknown>);
+}

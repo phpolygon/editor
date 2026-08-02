@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e494f7981e4c2ed56f5f72708c239eb1",
+    "content-hash": "13bc9bc2243242641dfbe40d1b4b3bed",
     "packages": [
         {
             "name": "brick/math",
@@ -2787,16 +2787,16 @@
         },
         {
             "name": "phpolygon/phpolygon",
-            "version": "v0.36.1",
+            "version": "v0.39.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/phpolygon/phpolygon.git",
-                "reference": "ed4498038138ad7eb6d639fed188f9950a6ecf33"
+                "reference": "d9fe7910ce92cdf53bf549c921abe48436f165af"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/phpolygon/phpolygon/zipball/ed4498038138ad7eb6d639fed188f9950a6ecf33",
-                "reference": "ed4498038138ad7eb6d639fed188f9950a6ecf33",
+                "url": "https://api.github.com/repos/phpolygon/phpolygon/zipball/d9fe7910ce92cdf53bf549c921abe48436f165af",
+                "reference": "d9fe7910ce92cdf53bf549c921abe48436f165af",
                 "shasum": ""
             },
             "require": {
@@ -2837,7 +2837,7 @@
             ],
             "description": "PHP-native game engine with AI-first authoring",
             "support": {
-                "source": "https://github.com/phpolygon/phpolygon/tree/v0.36.1",
+                "source": "https://github.com/phpolygon/phpolygon/tree/v0.39.0",
                 "issues": "https://github.com/phpolygon/phpolygon/issues"
             },
             "funding": [
@@ -2850,7 +2850,7 @@
                     "url": "https://www.patreon.com/PHPolygon"
                 }
             ],
-            "time": "2026-07-18T05:23:23+00:00"
+            "time": "2026-08-02T12:39:56+00:00"
         },
         {
             "name": "phpoption/phpoption",

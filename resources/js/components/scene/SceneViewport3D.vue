@@ -5,12 +5,24 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { useSceneStore } from '@/stores/scene';
 import { useSelectionStore } from '@/stores/selection';
+import { useTerrainEditorStore } from '@/stores/terrainEditor';
 import { EntitySync } from '@/three/entitySync';
+import { applyBrush, anchorAt, type StrokeAnchor } from '@/terrain/brushes';
+import { type Heightmap } from '@/terrain/heightmap';
+import { raycastTerrain, updateTerrainGeometry, buildTerrainGeometry, type TerrainGeometry } from '@/terrain/terrainMesh';
+import {
+    TERRAIN_COMPONENT,
+    heightmapFromComponent,
+    heightsPropertyValue,
+    sculptability,
+    worldToTerrainLocal,
+} from '@/terrain/sceneSculpt';
 
 const TRANSFORM3D_CLASS = 'PHPolygon\\Component\\Transform3D';
 
 const sceneStore = useSceneStore();
 const selectionStore = useSelectionStore();
+const terrainStore = useTerrainEditorStore();
 const container = ref<HTMLDivElement | null>(null);
 
 let renderer: THREE.WebGLRenderer | null = null;
@@ -69,12 +81,196 @@ function pickerCoords(event: PointerEvent): { x: number; y: number } {
     };
 }
 
+// ── In-scene terrain sculpting ──────────────────────────────────────────────
+//
+// Sculpting the terrain where it sits, against the props already placed on it.
+// The working heightmap is decoded from the selected entity's Terrain component
+// and written back once per stroke, so each drag is a single undo entry in the
+// scene document rather than one per frame.
+
+let sculptMap: Heightmap | null = null;
+let sculptGeometry: TerrainGeometry | null = null;
+let sculptMesh: THREE.Mesh | null = null;
+let sculptOrigin: [number, number, number] = [0, 0, 0];
+let sculptAnchor: StrokeAnchor | null = null;
+let sculpting = false;
+let sculptInvert = false;
+let sculptDirty = false;
+let lastSculptTime = 0;
+
+/** Whether a pointer event should sculpt rather than select/orbit. */
+function sculptActive(): boolean {
+    return terrainStore.sceneSculptEnabled && sculptMap !== null;
+}
+
+/**
+ * Bind the sculpt session to the selected entity's terrain, or clear it.
+ *
+ * Rebinding on selection change keeps the session honest: sculpting always
+ * targets what is selected, and an unsaved stroke cannot leak onto a different
+ * entity.
+ */
+function bindSculptTarget(): void {
+    void flushSculpt();
+    sculptMap = null;
+    sculptGeometry = null;
+    sculptMesh = null;
+    sculptAnchor = null;
+
+    if (!terrainStore.sceneSculptEnabled || !sync) return;
+
+    const selected = selectionStore.selectedEntity;
+    if (!selected) return;
+
+    const entity = sceneStore.viewEntities.find((e) => e.name === selected);
+    const check = sculptability(entity);
+    if (!check.ok) return;
+
+    sculptMap = heightmapFromComponent(check.component);
+    sculptGeometry = buildTerrainGeometry(sculptMap);
+
+    const object = sync.getObject(selected);
+    sculptOrigin = object ? [object.position.x, object.position.y, object.position.z] : [0, 0, 0];
+    sculptMesh =
+        (object?.children.find((c) => c instanceof THREE.Mesh) as THREE.Mesh | undefined) ?? null;
+}
+
+/** Terrain-local (x, z) under the pointer, or null when it misses. */
+function sculptPointAt(event: PointerEvent): [number, number] | null {
+    if (!sculptMap || !camera || !renderer) return null;
+
+    const ndc = pickerCoords(event);
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera);
+
+    // Raycast in the terrain's local space: shift the ray origin by the
+    // entity's translation rather than transforming every heightmap sample.
+    const origin: [number, number, number] = [
+        raycaster.ray.origin.x - sculptOrigin[0],
+        raycaster.ray.origin.y - sculptOrigin[1],
+        raycaster.ray.origin.z - sculptOrigin[2],
+    ];
+    const direction: [number, number, number] = [
+        raycaster.ray.direction.x,
+        raycaster.ray.direction.y,
+        raycaster.ray.direction.z,
+    ];
+
+    const hit = raycastTerrain(sculptMap, origin, direction);
+    if (!hit) return null;
+
+    // Already local, but go through the helper so the convention stays in one
+    // place if the transform handling ever grows.
+    return worldToTerrainLocal(
+        [hit[0] + sculptOrigin[0], hit[1] + sculptOrigin[1], hit[2] + sculptOrigin[2]],
+        sculptOrigin,
+    );
+}
+
+function refreshSculptMesh(): void {
+    if (!sculptMap || !sculptGeometry || !sculptMesh) return;
+
+    updateTerrainGeometry(sculptMap, sculptGeometry);
+    const attributes = sculptMesh.geometry.attributes;
+    if (attributes.position && attributes.normal) {
+        (attributes.position.array as Float32Array).set(sculptGeometry.positions);
+        (attributes.normal.array as Float32Array).set(sculptGeometry.normals);
+        attributes.position.needsUpdate = true;
+        attributes.normal.needsUpdate = true;
+        sculptMesh.geometry.computeBoundingSphere();
+    }
+    outline?.update();
+    invalidate();
+}
+
+/** Persist the stroke into the scene document, once. */
+async function flushSculpt(): Promise<void> {
+    if (!sculptDirty || !sculptMap) return;
+    const selected = selectionStore.selectedEntity;
+    if (!selected) return;
+
+    sculptDirty = false;
+    const value = heightsPropertyValue(sculptMap);
+
+    // Suppress the resync this triggers: the viewport geometry is already
+    // current, and re-syncing mid-session would rebuild the mesh we hold.
+    suppressSyncWhileDragging = true;
+    try {
+        await sceneStore.updateProperty(selected, TERRAIN_COMPONENT, 'heights', value);
+    } finally {
+        suppressSyncWhileDragging = false;
+    }
+}
+
+function onSculptPointerDown(event: PointerEvent): boolean {
+    if (!sculptActive() || event.button !== 0 || !sculptMap) return false;
+
+    const point = sculptPointAt(event);
+    if (!point) return false;
+
+    event.preventDefault();
+    sculpting = true;
+    sculptInvert = event.altKey;
+    lastSculptTime = performance.now();
+    sculptAnchor = anchorAt(sculptMap, point[0], point[1]);
+    if (orbit) orbit.enabled = false;
+    renderer?.domElement.setPointerCapture(event.pointerId);
+
+    applySculptStep(point, 1 / 60);
+    return true;
+}
+
+function onSculptPointerMove(event: PointerEvent): void {
+    if (!sculpting || !sculptMap) return;
+
+    const point = sculptPointAt(event);
+    if (!point) return;
+
+    const now = performance.now();
+    // Clamp the step so a stall cannot land one huge brush application.
+    const dt = Math.min(0.05, (now - lastSculptTime) / 1000);
+    lastSculptTime = now;
+
+    applySculptStep(point, dt);
+}
+
+function applySculptStep(point: [number, number], dt: number): void {
+    if (!sculptMap) return;
+
+    const changed = applyBrush(sculptMap, {
+        settings: terrainStore.brush,
+        worldX: point[0],
+        worldZ: point[1],
+        dt,
+        invert: sculptInvert,
+        anchor: sculptAnchor ?? undefined,
+    });
+
+    if (changed) {
+        sculptDirty = true;
+        refreshSculptMesh();
+    }
+}
+
+function endSculpt(event?: PointerEvent): boolean {
+    if (!sculpting) return false;
+    sculpting = false;
+    sculptAnchor = null;
+    if (orbit) orbit.enabled = true;
+    if (event) renderer?.domElement.releasePointerCapture(event.pointerId);
+    void flushSculpt();
+    return true;
+}
+
 function onPointerDown(event: PointerEvent): void {
+    if (onSculptPointerDown(event)) return;
     if (event.button !== 0) return;
     pointerDownAt = { x: event.clientX, y: event.clientY };
 }
 
 function onPointerUp(event: PointerEvent): void {
+    // A sculpt stroke must not fall through into entity picking.
+    if (endSculpt(event)) return;
     if (event.button !== 0 || !pointerDownAt) return;
     const dx = event.clientX - pointerDownAt.x;
     const dy = event.clientY - pointerDownAt.y;
@@ -296,6 +492,8 @@ function setup(): void {
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
+    renderer.domElement.addEventListener('pointermove', onSculptPointerMove);
+    renderer.domElement.addEventListener('pointercancel', endSculpt);
     window.addEventListener('keydown', onKeyDown);
 
     resize();
@@ -317,6 +515,8 @@ function cleanup(): void {
     if (renderer) {
         renderer.domElement.removeEventListener('pointerdown', onPointerDown);
         renderer.domElement.removeEventListener('pointerup', onPointerUp);
+        renderer.domElement.removeEventListener('pointermove', onSculptPointerMove);
+        renderer.domElement.removeEventListener('pointercancel', endSculpt);
     }
     if (outline) {
         outline.geometry.dispose();
@@ -366,12 +566,31 @@ watch(
     () => {
         attachGizmo();
         refreshOutline();
+        bindSculptTarget();
         invalidate();
     },
 );
 
-onMounted(setup);
-onBeforeUnmount(cleanup);
+// Entering or leaving sculpt mode rebinds; the gizmo is detached while
+// sculpting so a drag cannot move the terrain entity instead of shaping it.
+watch(
+    () => terrainStore.sceneSculptEnabled,
+    (enabled) => {
+        bindSculptTarget();
+        if (enabled) gizmo?.detach();
+        else attachGizmo();
+        invalidate();
+    },
+);
+
+onMounted(() => {
+    setup();
+    bindSculptTarget();
+});
+onBeforeUnmount(() => {
+    void flushSculpt();
+    cleanup();
+});
 </script>
 
 <template>

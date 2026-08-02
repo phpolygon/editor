@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { Boxes, LayoutTemplate, PanelsTopLeft, AudioWaveform, Shapes, Palette, Sparkles } from 'lucide-vue-next';
+import { Boxes, LayoutTemplate, PanelsTopLeft, AudioWaveform, Shapes, Palette, Sparkles, Mountain } from 'lucide-vue-next';
 
 import HierarchyPanel from '@/components/hierarchy/HierarchyPanel.vue';
 import InspectorPanel from '@/components/inspector/InspectorPanel.vue';
@@ -22,6 +22,9 @@ import MaterialInspectorPanel from '@/components/material/MaterialInspectorPanel
 import ShaderNodePanel from '@/components/shader/ShaderNodePanel.vue';
 import ShaderViewportPanel from '@/components/shader/ShaderViewportPanel.vue';
 import ShaderGraphPanel from '@/components/shader/ShaderGraphPanel.vue';
+import TerrainToolPanel from '@/components/terrain/TerrainToolPanel.vue';
+import TerrainViewportPanel from '@/components/terrain/TerrainViewportPanel.vue';
+import TerrainSettingsPanel from '@/components/terrain/TerrainSettingsPanel.vue';
 
 /**
  * Data-driven registry of editing workspaces. Each workspace declares its
@@ -105,6 +108,15 @@ export const WORKSPACES: readonly WorkspaceDef[] = [
         left: ShaderNodePanel,
         center: ShaderViewportPanel,
         right: ShaderGraphPanel,
+        showAssetBrowser: false,
+    },
+    {
+        id: 'terrain',
+        label: 'Terrain',
+        icon: Mountain,
+        left: TerrainToolPanel,
+        center: TerrainViewportPanel,
+        right: TerrainSettingsPanel,
         showAssetBrowser: false,
     },
 ];
