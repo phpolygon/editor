@@ -22,6 +22,9 @@ const projectStore = useProjectStore();
 const editorStore = useEditorStore();
 const { addToast } = useToast();
 
+/** How long a refused close stays "armed" before it warns again. */
+const CLOSE_ARM_MS = 10_000;
+
 // Resolve the active workspace's panel components from the registry.
 const activeWorkspace = computed(() => getWorkspace(editorStore.workspace));
 
@@ -32,8 +35,9 @@ provide('renameTriggerId', renameTriggerId);
 useKeyboardShortcuts({
     'ctrl+s': async () => {
         try {
-            await sceneStore.save();
-            addToast('Scene saved', 'success');
+            const warning = await sceneStore.save();
+            if (warning) addToast(warning, 'error');
+            else addToast('Scene saved', 'success');
         } catch {
             addToast('Save failed', 'error');
         }
@@ -53,11 +57,27 @@ useKeyboardShortcuts({
     },
 });
 
-// Unsaved changes warning
+// Unsaved-changes guard.
+//
+// Electron does not show the browser's native "leave site?" prompt, so a plain
+// preventDefault() here silently refuses the close — the window simply stops
+// responding to the close button for as long as the scene is dirty, with
+// nothing on screen to explain it. So refuse at most once, say what is going
+// on, and let the next attempt through: closing must never become impossible.
+let closeArmed = false;
+let closeArmTimer: number | undefined;
+
 function onBeforeUnload(e: BeforeUnloadEvent) {
-    if (sceneStore.dirty) {
-        e.preventDefault();
-    }
+    if (!sceneStore.dirty || closeArmed) return;
+
+    e.preventDefault();
+    closeArmed = true;
+    window.clearTimeout(closeArmTimer);
+    closeArmTimer = window.setTimeout(() => {
+        closeArmed = false;
+    }, CLOSE_ARM_MS);
+
+    addToast('Unsaved changes — Ctrl+S to save, or close again to discard them', 'error');
 }
 
 onMounted(async () => {
@@ -75,7 +95,10 @@ onMounted(async () => {
         // Ignore — user can still open a project manually.
     }
 });
-onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
+onUnmounted(() => {
+    window.removeEventListener('beforeunload', onBeforeUnload);
+    window.clearTimeout(closeArmTimer);
+});
 </script>
 
 <template>
