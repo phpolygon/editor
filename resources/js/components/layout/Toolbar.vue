@@ -148,7 +148,10 @@ async function togglePlay() {
 
     if (sceneStore.dirty) {
         try {
-            await sceneStore.save();
+            // A dropped property means the game is about to run without it —
+            // worth saying before the play session starts.
+            const warning = await sceneStore.save();
+            if (warning) addToast(warning, 'error');
         } catch (e: any) {
             addToast(e?.message ?? 'Could not save the scene before playing', 'error');
             return;
@@ -213,8 +216,9 @@ async function newScene() {
 
 async function save() {
     try {
-        await sceneStore.save();
-        addToast('Scene saved', 'success');
+        const warning = await sceneStore.save();
+        if (warning) addToast(warning, 'error');
+        else addToast('Scene saved', 'success');
     } catch {
         addToast('Save failed', 'error');
     }

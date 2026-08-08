@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Scene\DroppedPropertyDetector;
 use PHPolygon\Editor\Support\Path;
 use RuntimeException;
 
@@ -40,9 +41,21 @@ class SaveSceneCommand implements CommandInterface
 
         $className = str_replace(' ', '', ucwords(str_replace(['_', '-'], ' ', $sceneName)));
         $path = Path::join($scenesDir, $className.'.php');
-        file_put_contents($path, $context->transpiler->fromArray($data));
+        $generated = $context->transpiler->fromArray($data);
+        file_put_contents($path, $generated);
         $doc->markClean();
 
-        return ['saved' => $path, 'dirty' => false, 'format' => 'php'];
+        // Saving is the point where a component the generator cannot express
+        // loses its values. Report it rather than let the next scene load come
+        // back with an empty mesh graph or heightmap and no explanation.
+        $dropped = DroppedPropertyDetector::detect($data, $generated);
+
+        return [
+            'saved' => $path,
+            'dirty' => false,
+            'format' => 'php',
+            'dropped' => $dropped,
+            'warning' => DroppedPropertyDetector::describe($dropped),
+        ];
     }
 }

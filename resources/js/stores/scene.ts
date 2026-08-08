@@ -229,9 +229,16 @@ export const useSceneStore = defineStore('scene', () => {
         }
     }
 
-    async function save() {
-        await commands.saveScene();
+    /**
+     * Persist the scene. Returns the backend's warning when the saved file
+     * could not carry some component values, so the caller can surface it —
+     * silently losing an edited mesh graph or heightmap is worse than a save
+     * that says what it dropped.
+     */
+    async function save(): Promise<string | null> {
+        const result = await commands.saveScene();
         dirty.value = false;
+        return result.warning ?? null;
     }
 
     async function refreshHierarchy() {
