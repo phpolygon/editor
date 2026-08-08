@@ -3,9 +3,11 @@ import { Mountain, Layers, Trees } from 'lucide-vue-next';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import SegmentedControl from '@/components/ui/SegmentedControl.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
+import EntityLink from '@/components/ui/EntityLink.vue';
 import TerrainSculptViewport from './TerrainSculptViewport.vue';
 import { useTerrainEditorStore } from '@/stores/terrainEditor';
 import { useProjectStore } from '@/stores/project';
+import { useToast } from '@/composables/useToast';
 
 /**
  * Centre panel: the sculpt viewport with the tool switch in its header.
@@ -16,17 +18,37 @@ import { useProjectStore } from '@/stores/project';
 const store = useTerrainEditorStore();
 const project = useProjectStore();
 
+const { addToast } = useToast();
+
 const MODES = [
     { value: 'sculpt' as const, label: 'Sculpt', icon: Mountain },
     { value: 'paint' as const, label: 'Paint', icon: Layers },
     { value: 'scatter' as const, label: 'Scatter', icon: Trees },
 ];
+
+/** Save the terrain asset and write the sculpt back onto the linked entity. */
+async function applyToEntity() {
+    try {
+        const r = await store.applyToEntity();
+        addToast(`Applied the terrain to ${r.entity}`, 'success');
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to apply the terrain', 'error');
+    }
+}
 </script>
 
 <template>
     <div class="flex flex-col h-full min-h-0">
         <PanelHeader :title="store.name || 'Terrain'">
             <template #actions>
+                <EntityLink
+                    v-if="store.linkedEntity"
+                    :entity="store.linkedEntity.entity"
+                    :hint="`Sculpting the terrain of entity “${store.linkedEntity.entity}”`"
+                    :disabled="store.busy"
+                    @apply="applyToEntity"
+                    @unlink="store.clearEntityLink()"
+                />
                 <SegmentedControl v-model="store.mode" :options="MODES" />
             </template>
         </PanelHeader>

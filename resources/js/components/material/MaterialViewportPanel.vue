@@ -2,6 +2,7 @@
 import { Save } from 'lucide-vue-next';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import Button from '@/components/ui/Button.vue';
+import EntityLink from '@/components/ui/EntityLink.vue';
 import MaterialPreviewViewport from './MaterialPreviewViewport.vue';
 import { useMaterialEditorStore } from '@/stores/materialEditor';
 import { useToast } from '@/composables/useToast';
@@ -17,6 +18,17 @@ async function save() {
         addToast(e?.message ?? 'Failed to save material', 'error');
     }
 }
+
+/** Save and point the linked entity's component at this material. */
+async function applyToEntity() {
+    const entity = store.linkedEntity?.entity ?? '';
+    try {
+        const r = await store.applyToEntity();
+        addToast(`Applied material “${r.materialId}” to ${entity}`, 'success');
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to apply the material', 'error');
+    }
+}
 </script>
 
 <template>
@@ -29,6 +41,13 @@ async function save() {
                     placeholder="material id"
                     class="h-7 w-32 px-2 rounded-md bg-editor-input border border-editor-border text-xs
                            focus:outline-none focus:border-editor-accent"
+                />
+                <EntityLink
+                    v-if="store.linkedEntity"
+                    :entity="store.linkedEntity.entity"
+                    :hint="`Editing the material of entity “${store.linkedEntity.entity}”`"
+                    @apply="applyToEntity"
+                    @unlink="store.clearEntityLink()"
                 />
                 <Button :icon="Save" @click="save">Save</Button>
             </template>

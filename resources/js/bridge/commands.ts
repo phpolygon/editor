@@ -36,8 +36,16 @@ export function expandScene(): Promise<SceneData & { expanded?: boolean }> {
     return cmd<SceneData & { expanded?: boolean }>('expand_scene', {});
 }
 
-export function saveScene(): Promise<{ saved: boolean }> {
-    return cmd<{ saved: boolean }>('save_scene');
+export interface SaveSceneResult {
+    saved: boolean | string;
+    format?: 'php' | 'json';
+    /** Set when the saved file could not carry some component values. */
+    warning?: string | null;
+    dropped?: { entity: string; component: string; properties: string[] }[];
+}
+
+export function saveScene(): Promise<SaveSceneResult> {
+    return cmd<SaveSceneResult>('save_scene');
 }
 
 export function listScenes(): Promise<{ scenes: string[] }> {
@@ -235,6 +243,16 @@ export function saveShader(
     graph: unknown,
 ): Promise<{ saved: boolean; name: string; vertexPath: string; fragmentPath: string; relativePath: string }> {
     return cmd('save_shader', { name, vertex, fragment, graph });
+}
+
+/** Saved shaders that kept their authoring graph, so they can be reopened. */
+export function listShaderAssets(): Promise<{ shaders: { name: string; path: string }[] }> {
+    return cmd('list_shader_assets', {});
+}
+
+/** Load a saved shader's authoring graph back into the shader editor. */
+export function loadShaderAsset(name: string): Promise<{ name: string; graph: unknown }> {
+    return cmd('load_shader_asset', { name });
 }
 
 export function assetFileUrl(relativePath: string): string {

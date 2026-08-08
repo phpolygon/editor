@@ -53,6 +53,14 @@ import {
     type SplatMap,
 } from '@/terrain/splat';
 import { createScatterSet, type ScatterSet } from '@/terrain/scatter';
+import {
+    colliderProperties,
+    gridsMatch,
+    payloadFromComponent,
+    terrainProperties,
+} from '@/terrain/entityTerrain';
+import type { EntityTerrainLink, EntityTerrainTarget } from '@/scene/entityAssets';
+import { useSceneStore } from '@/stores/scene';
 
 /**
  * State for the terrain workspace.
@@ -100,6 +108,11 @@ export const useTerrainEditorStore = defineStore('terrainEditor', () => {
 
     const assets = ref<{ name: string; path: string }[]>([]);
     const loadedAssetName = ref<string | null>(null);
+
+    // Set when the workspace was opened from an entity's inspector: the terrain
+    // being sculpted belongs to that scene entity, and `applyToEntity()` writes
+    // it back onto its components.
+    const linkedEntity = ref<EntityTerrainLink | null>(null);
     const dirty = ref(false);
     const busy = ref(false);
     const error = ref<string | null>(null);
@@ -452,6 +465,7 @@ export const useTerrainEditorStore = defineStore('terrainEditor', () => {
         materialId.value = '';
         chunkSize.value = 32;
         loadedAssetName.value = null;
+        linkedEntity.value = null;
         undoStack.length = 0;
         redoStack.length = 0;
         syncHistoryFlags();
@@ -490,12 +504,99 @@ export const useTerrainEditorStore = defineStore('terrainEditor', () => {
     }
 
     async function load(assetName: string) {
+        linkedEntity.value = null;
         const payload = await withBusy(() => loadTerrain(assetName));
         if (payload) {
             fromPayload(payload);
             loadedAssetName.value = payload.name;
         }
         return payload;
+    }
+
+    function clearEntityLink() {
+        linkedEntity.value = null;
+    }
+
+    /**
+     * Open the terrain of a scene entity, and remember the entity so
+     * `applyToEntity()` can write the sculpt back.
+     *
+     * The component is the authority for the shape — it is what the game
+     * actually loads, and it may have been sculpted in the scene viewport since
+     * the asset was written. The asset only contributes what the component
+     * cannot hold: the paint layers and splat coverage, and only when it was
+     * painted at the same grid resolution.
+     */
+    async function openForEntity(target: EntityTerrainTarget) {
+        linkedEntity.value = null;
+
+        const assetName = target.assetName !== '' ? target.assetName : target.entity;
+        const payload = payloadFromComponent(
+            target.component,
+            assetName,
+            target.scatterSets as TerrainPayload['scatter'],
+        );
+
+        if (target.assetName !== '') {
+            const asset = await withBusy(() => loadTerrain(target.assetName));
+            if (asset && gridsMatch(asset, payload)) {
+                payload.layers = asset.layers ?? [];
+                payload.splat = asset.splat ?? '';
+                // The entity's own scatter wins; fall back to the asset's.
+                if (payload.scatter.length === 0) payload.scatter = asset.scatter ?? [];
+            }
+        }
+
+        fromPayload(payload);
+        loadedAssetName.value = target.assetName !== '' ? target.assetName : null;
+        error.value = null;
+
+        linkedEntity.value = {
+            entity: target.entity,
+            componentClass: target.componentClass,
+            colliderComponentClass: target.colliderComponentClass,
+            scatterComponentClass: target.scatterComponentClass,
+        };
+    }
+
+    /**
+     * Write the sculpted terrain back onto the entity it was opened from.
+     *
+     * The asset is saved first: layers and splat live only there, so skipping it
+     * would drop the painting work. What the component can hold then follows,
+     * property by property, so every field lands in the scene document's undo
+     * history like any other inspector edit.
+     */
+    async function applyToEntity(): Promise<{ entity: string; asset: string | null }> {
+        const link = linkedEntity.value;
+        if (!link) throw new Error('No entity is linked to the terrain editor');
+
+        const payload = toPayload();
+        const saved = await save();
+        if (saved) payload.name = saved.name;
+
+        const scene = useSceneStore();
+        for (const [property, value] of Object.entries(terrainProperties(payload))) {
+            await scene.updateProperty(link.entity, link.componentClass, property, value);
+        }
+
+        if (link.colliderComponentClass) {
+            for (const [property, value] of Object.entries(colliderProperties(payload))) {
+                await scene.updateProperty(link.entity, link.colliderComponentClass, property, value);
+            }
+        }
+
+        // Scatter sets only travel when the entity already carries the
+        // component that reads them; adding one silently is not this action's
+        // job (the terrain panel places scatter).
+        if (link.scatterComponentClass) {
+            await scene.updateProperty(link.entity, link.scatterComponentClass, 'sets', payload.scatter);
+        }
+
+        await scene.refreshHierarchy();
+        dirty.value = false;
+
+        return { entity: link.entity, asset: saved?.name ?? null };
     }
 
     async function remove(assetName: string) {
@@ -630,6 +731,7 @@ export const useTerrainEditorStore = defineStore('terrainEditor', () => {
         activeScatter,
         assets,
         loadedAssetName,
+        linkedEntity,
         dirty,
         busy,
         error,
@@ -670,6 +772,9 @@ export const useTerrainEditorStore = defineStore('terrainEditor', () => {
         refreshAssets,
         save,
         load,
+        openForEntity,
+        applyToEntity,
+        clearEntityLink,
         remove,
         bake,
         bakeLayers,

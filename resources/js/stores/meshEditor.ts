@@ -24,7 +24,13 @@ import {
 } from '@/bridge/commands';
 import { computeNormals, flipNormals, type RawMeshData } from '@/mesh/editMesh';
 import { importMeshParts } from '@/mesh/importMesh';
+import type { EntityMeshLink, EntityMeshTarget } from '@/scene/entityAssets';
+import { setMesh } from '@/three/meshCache';
+import { useSceneStore } from '@/stores/scene';
 import type { MeshData, MeshListEntry } from '@/types';
+
+/** Cache version for meshes applied back to an entity; only has to rise. */
+let appliedVersion = 0;
 
 /**
  * State for the mesh editor workspace: a standalone procedural-mesh node graph
@@ -49,13 +55,32 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
     // the UI show what's being edited and lets "Save" overwrite it in place.
     const loadedAssetName = ref<string | null>(null);
 
+    // What that asset holds on disk — a procedural graph or baked geometry.
+    // Applying to an entity bakes, so this tells us when writing under the same
+    // name would silently throw a saved graph away.
+    const loadedAssetKind = ref<'graph' | 'raw' | null>(null);
+
     // Vertex-editing: `editedMesh` is a mutable baked copy of the current mesh;
     // while in edit mode the graph is inert and this raw geometry is the source.
     const editMode = ref(false);
     const editedMesh = ref<RawMeshData | null>(null);
 
+    // Set when the editor was opened from an entity's inspector: it remembers
+    // which component the mesh came from so `applyToEntity()` can write the
+    // result back instead of leaving the edit stranded in a standalone asset.
+    const linkedEntity = ref<EntityMeshLink | null>(null);
+
     function starterGraph(): ProceduralGraphData {
         return addNode(emptyGraph(), createNode('box', 'box'));
+    }
+
+    /** Detach graph data from whatever owns it (scene state, another store). */
+    function cloneNodes(nodes: GraphNode[]): GraphNode[] {
+        return JSON.parse(JSON.stringify(nodes)) as GraphNode[];
+    }
+
+    function clearEntityLink() {
+        linkedEntity.value = null;
     }
 
     function setGraph(next: ProceduralGraphData) {
@@ -72,9 +97,11 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         preview.value = null;
         error.value = null;
         loadedAssetName.value = null;
+        loadedAssetKind.value = null;
         editMode.value = false;
         editedMesh.value = null;
         name.value = 'mesh';
+        linkedEntity.value = null;
     }
 
     /** Evaluate the current graph into MeshData via the backend. */
@@ -119,6 +146,7 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
      * is read-only and untouched).
      */
     async function loadProjectMesh(id: string) {
+        linkedEntity.value = null;
         const data: MeshData = await getMesh(id);
         editedMesh.value = {
             vertices: [...data.vertices],
@@ -128,6 +156,7 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         };
         name.value = id;
         loadedAssetName.value = null; // not one of our saved assets — Save makes a copy
+        loadedAssetKind.value = null;
         editMode.value = true;
     }
 
@@ -141,15 +170,18 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         const saved = await saveMesh(name.value.trim() || 'mesh', graph.value.nodes, graph.value.output);
         name.value = saved.name;
         loadedAssetName.value = saved.name;
+        loadedAssetKind.value = 'graph';
         await refreshAssets();
         return saved;
     }
 
     /** Load a saved mesh asset back into the editor (graph or baked raw). */
     async function load(assetName: string) {
+        linkedEntity.value = null;
         const data = await loadMeshAsset(assetName);
         name.value = data.name;
         loadedAssetName.value = data.name;
+        loadedAssetKind.value = data.raw ? 'raw' : 'graph';
         if (data.raw) {
             editedMesh.value = {
                 vertices: [...data.raw.vertices],
@@ -164,6 +196,143 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
             graph.value = { nodes: data.nodes as GraphNode[], output: data.output };
             await evaluate();
         }
+    }
+
+    /**
+     * Open the mesh of a scene entity in this workspace, and remember where it
+     * came from so `applyToEntity()` can write the result back.
+     *
+     * A ProceduralMesh carries its graph on the component, so it opens as a
+     * graph. A MeshRenderer only references geometry by id: that id is either
+     * one of the editor's own saved assets (which round-trips as a graph or as
+     * baked geometry) or a mesh the project/engine registered, which comes in
+     * as read-only baked geometry. A renderer with no mesh yet starts from the
+     * default box, so applying gives the entity its first mesh.
+     */
+    async function openForEntity(target: EntityMeshTarget) {
+        error.value = null;
+        linkedEntity.value = null;
+
+        if (target.kind === 'graph') {
+            editMode.value = false;
+            editedMesh.value = null;
+            loadedAssetName.value = null;
+            loadedAssetKind.value = null;
+            name.value = target.meshId || target.entity;
+            graph.value =
+                target.nodes.length > 0
+                    ? { nodes: cloneNodes(target.nodes), output: target.output }
+                    : starterGraph();
+            await evaluate();
+        } else if (target.meshId !== '') {
+            await refreshAssets();
+            if (assets.value.some((a) => a.name === target.meshId)) {
+                await load(target.meshId);
+            } else {
+                await loadProjectMesh(target.meshId);
+            }
+        } else {
+            reset();
+            name.value = target.entity;
+            await evaluate();
+        }
+
+        linkedEntity.value = {
+            entity: target.entity,
+            componentClass: target.componentClass,
+            kind: target.kind,
+        };
+    }
+
+    /** `base`, or `base_2`, `base_3`… — the first name no asset is using. */
+    function freeAssetName(base: string): string {
+        if (!assets.value.some((a) => a.name === base)) return base;
+        let i = 2;
+        while (assets.value.some((a) => a.name === `${base}_${i}`)) i++;
+        return `${base}_${i}`;
+    }
+
+    /** The current mesh as plain geometry: the edited copy, else the preview. */
+    function bakedMesh(): RawMeshData | null {
+        if (editMode.value && editedMesh.value) {
+            const m = editedMesh.value;
+            return { vertices: [...m.vertices], normals: [...m.normals], uvs: [...m.uvs], indices: [...m.indices] };
+        }
+        const p = preview.value;
+        if (!p) return null;
+        return {
+            vertices: [...p.vertices],
+            normals: [...(p.normals ?? [])],
+            uvs: [...(p.uvs ?? [])],
+            indices: [...p.indices],
+        };
+    }
+
+    /**
+     * Write the mesh currently open in the editor back onto the entity it was
+     * opened from.
+     *
+     * A ProceduralMesh gets the graph itself, so the entity keeps generating
+     * its geometry. A MeshRenderer gets baked geometry saved as a mesh asset,
+     * referenced by id.
+     */
+    async function applyToEntity(): Promise<{ kind: 'graph' | 'asset'; meshId?: string }> {
+        const link = linkedEntity.value;
+        if (!link) throw new Error('No entity is linked to the mesh editor');
+
+        const scene = useSceneStore();
+
+        if (link.kind === 'graph') {
+            if (editMode.value) {
+                throw new Error(
+                    'Vertex edits cannot be written back to a ProceduralMesh — save the mesh and point a MeshRenderer at it instead.',
+                );
+            }
+            const result = validate(graph.value);
+            if (!result.ok) {
+                error.value = result.errors[0] ?? 'Invalid graph';
+                throw new Error(error.value);
+            }
+            await scene.updateProperty(link.entity, link.componentClass, 'nodes', cloneNodes(graph.value.nodes));
+            await scene.updateProperty(link.entity, link.componentClass, 'output', graph.value.output);
+            return { kind: 'graph' };
+        }
+
+        const baked = bakedMesh();
+        if (!baked) throw new Error('Nothing to apply — the mesh has not been evaluated yet');
+
+        // Applying writes baked geometry, so writing under the name of an open
+        // procedural asset would throw its node graph away. Keep the graph and
+        // put the bake next to it.
+        const base = name.value.trim() || link.entity;
+        const target =
+            loadedAssetKind.value === 'graph' && loadedAssetName.value === base
+                ? freeAssetName(`${base}_baked`)
+                : base;
+
+        const saved = await saveRawMesh(target, baked);
+        name.value = saved.name;
+        loadedAssetName.value = saved.name;
+        loadedAssetKind.value = 'raw';
+        await refreshAssets();
+
+        // The viewport caches geometry by mesh id, and the id usually does not
+        // change — without seeding the cache it would keep drawing the shape
+        // from before the edit.
+        setMesh(saved.name, {
+            id: saved.name,
+            version: ++appliedVersion,
+            ...baked,
+            vertexCount: baked.vertices.length / 3,
+            triangleCount: baked.indices.length / 3,
+        });
+
+        await scene.updateProperty(link.entity, link.componentClass, 'meshId', saved.name);
+        // Re-pull the hierarchy so the viewport re-syncs even when the id it
+        // already had is the one we just rewrote.
+        await scene.refreshHierarchy();
+
+        return { kind: 'asset', meshId: saved.name };
     }
 
     /** Bake the current evaluated mesh into an editable raw copy. */
@@ -205,6 +374,7 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
      * first sub-mesh is opened for viewing. Returns how much was imported so the
      * caller can report it. */
     async function importFile(file: File): Promise<{ meshes: number; materials: number }> {
+        linkedEntity.value = null;
         const parts = await importMeshParts(file);
 
         const savedMeshes: { name: string; mesh: RawMeshData }[] = [];
@@ -231,6 +401,7 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         editedMesh.value = first.mesh;
         name.value = first.name;
         loadedAssetName.value = first.name;
+        loadedAssetKind.value = 'raw';
         editMode.value = true;
 
         return { meshes: savedMeshes.length, materials: materialCount };
@@ -243,6 +414,7 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
             const saved = await saveRawMesh(meshName, editedMesh.value);
             name.value = saved.name;
             loadedAssetName.value = saved.name;
+            loadedAssetKind.value = 'raw';
             await refreshAssets();
             return saved;
         }
@@ -284,6 +456,7 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         loadedAssetName,
         editMode,
         editedMesh,
+        linkedEntity,
         setGraph,
         addNodeOfType,
         reset,
@@ -297,6 +470,9 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
         deleteAsset,
         renameAsset,
         load,
+        openForEntity,
+        applyToEntity,
+        clearEntityLink,
         enterEditMode,
         exitEditMode,
         updateEditedVertices,

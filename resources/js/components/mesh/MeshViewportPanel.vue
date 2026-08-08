@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Save, SaveAll, Pencil, Check, FlipVertical2, FileBox, FilePlus2, Move3d, Rotate3d, Scale3d } from 'lucide-vue-next';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import Button from '@/components/ui/Button.vue';
+import EntityLink from '@/components/ui/EntityLink.vue';
 import SegmentedControl from '@/components/ui/SegmentedControl.vue';
 import MeshPreviewViewport from './MeshPreviewViewport.vue';
 import { useMeshEditorStore } from '@/stores/meshEditor';
@@ -87,6 +88,22 @@ function newMesh() {
     store.reset();
     store.evaluate();
 }
+
+/** Write the open mesh back to the entity the editor was opened from. */
+async function applyToEntity() {
+    const entity = store.linkedEntity?.entity ?? '';
+    try {
+        const result = await store.applyToEntity();
+        addToast(
+            result.kind === 'graph'
+                ? `Applied the mesh graph to ${entity}`
+                : `Applied mesh “${result.meshId}” to ${entity}`,
+            'success',
+        );
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to apply the mesh', 'error');
+    }
+}
 </script>
 
 <template>
@@ -104,6 +121,16 @@ function newMesh() {
                     <span class="truncate">{{ store.loadedAssetName ?? store.name }}</span>
                     <span v-if="!store.loadedAssetName" class="text-editor-muted">· unsaved</span>
                 </span>
+
+                <!-- Opened from an entity's inspector: show the link and offer
+                     to write the result back to that entity. -->
+                <EntityLink
+                    v-if="store.linkedEntity"
+                    :entity="store.linkedEntity.entity"
+                    :hint="`Editing the mesh of entity “${store.linkedEntity.entity}”`"
+                    @apply="applyToEntity"
+                    @unlink="store.clearEntityLink()"
+                />
 
                 <template v-if="store.editMode">
                     <SegmentedControl v-model="transformMode" :options="transformModes" />
