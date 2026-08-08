@@ -2787,16 +2787,16 @@
         },
         {
             "name": "phpolygon/phpolygon",
-            "version": "v0.39.0",
+            "version": "v0.39.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/phpolygon/phpolygon.git",
-                "reference": "d9fe7910ce92cdf53bf549c921abe48436f165af"
+                "reference": "c7d61f7d9b61c1f90995b6e20a8781bd8f9bb18c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/phpolygon/phpolygon/zipball/d9fe7910ce92cdf53bf549c921abe48436f165af",
-                "reference": "d9fe7910ce92cdf53bf549c921abe48436f165af",
+                "url": "https://api.github.com/repos/phpolygon/phpolygon/zipball/c7d61f7d9b61c1f90995b6e20a8781bd8f9bb18c",
+                "reference": "c7d61f7d9b61c1f90995b6e20a8781bd8f9bb18c",
                 "shasum": ""
             },
             "require": {
@@ -2837,7 +2837,7 @@
             ],
             "description": "PHP-native game engine with AI-first authoring",
             "support": {
-                "source": "https://github.com/phpolygon/phpolygon/tree/v0.39.0",
+                "source": "https://github.com/phpolygon/phpolygon/tree/v0.39.1",
                 "issues": "https://github.com/phpolygon/phpolygon/issues"
             },
             "funding": [
@@ -2850,7 +2850,7 @@
                     "url": "https://www.patreon.com/PHPolygon"
                 }
             ],
-            "time": "2026-08-02T12:39:56+00:00"
+            "time": "2026-08-08T11:09:01+00:00"
         },
         {
             "name": "phpoption/phpoption",
