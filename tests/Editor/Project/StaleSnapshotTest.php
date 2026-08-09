@@ -156,6 +156,20 @@ class StaleSnapshotTest extends TestCase
         $this->assertSame(24, $mesh['vertexCount']);
     }
 
+    public function testANewSnapshotDropsWhatItNoLongerContains(): void
+    {
+        $this->snapshotMesh('char_arm', 24);
+
+        // A later build that no longer produces this mesh — it is served from
+        // assets/ now, so the old entry must not linger and answer for the id.
+        ProjectAssetCache::write($this->context->projectDir, [
+            'other' => ['id' => 'other', 'version' => 1, 'vertices' => [], 'normals' => [], 'uvs' => [], 'indices' => [], 'vertexCount' => 0, 'triangleCount' => 0],
+        ], []);
+
+        $this->assertNull(ProjectAssetCache::mesh($this->context->projectDir, 'char_arm'));
+        $this->assertNotNull(ProjectAssetCache::mesh($this->context->projectDir, 'other'));
+    }
+
     public function testSavingAMaterialRetiresItsSnapshot(): void
     {
         ProjectAssetCache::write($this->context->projectDir, [], [

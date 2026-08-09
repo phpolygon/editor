@@ -193,11 +193,25 @@ final class ProjectAssetCache
             return;
         }
 
+        $previous = self::readIndex($projectDir, $kind);
+
         $ids = [];
         foreach ($items as $id => $data) {
             $id = (string) $id;
             $ids[] = $id;
             @file_put_contents($subdir.DIRECTORY_SEPARATOR.md5($id).'.json', json_encode($data));
+        }
+
+        // Drop what this snapshot no longer contains. The index alone would hide
+        // those entries from the bulk fetch, but their files would stay behind
+        // and keep answering a single get_mesh — so a mesh that moved out of the
+        // build (e.g. because it is served from assets/ now) would still come
+        // back in its old shape.
+        foreach (array_diff($previous, $ids) as $gone) {
+            $stale = $subdir.DIRECTORY_SEPARATOR.md5($gone).'.json';
+            if (is_file($stale)) {
+                @unlink($stale);
+            }
         }
 
         @file_put_contents($subdir.DIRECTORY_SEPARATOR.'_index.json', json_encode($ids));
