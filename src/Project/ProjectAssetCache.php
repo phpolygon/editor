@@ -76,6 +76,30 @@ final class ProjectAssetCache
         self::writeCollection($projectDir, 'materials', $materials);
     }
 
+    /**
+     * Drop one asset from the snapshot.
+     *
+     * The snapshot is a copy of what a scene build produced, and the getters
+     * prefer it over the same id on disk. So when an asset is authored in the
+     * editor and written to `assets/`, the stale copy has to go — otherwise the
+     * edit is saved correctly and then hidden by the snapshot the next time the
+     * scene is opened. If the build really does own that id, the next scene load
+     * captures it again.
+     */
+    public static function forget(string $projectDir, string $kind, string $id): void
+    {
+        $subdir = self::dir($projectDir).DIRECTORY_SEPARATOR.$kind;
+        $path = $subdir.DIRECTORY_SEPARATOR.md5($id).'.json';
+        if (is_file($path)) {
+            @unlink($path);
+        }
+
+        $ids = array_values(array_filter(self::readIndex($projectDir, $kind), static fn (string $known): bool => $known !== $id));
+        if (is_dir($subdir)) {
+            @file_put_contents($subdir.DIRECTORY_SEPARATOR.'_index.json', json_encode($ids));
+        }
+    }
+
     /** @return array<string, mixed>|null */
     public static function material(string $projectDir, string $id): ?array
     {

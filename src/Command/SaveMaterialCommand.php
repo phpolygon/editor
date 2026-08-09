@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Project\ProjectAssetCache;
 use PHPolygon\Editor\Support\Path;
 use RuntimeException;
 
@@ -51,6 +52,10 @@ class SaveMaterialCommand implements CommandInterface
         if ($json === false || file_put_contents($filePath, $json) === false) {
             throw new RuntimeException("Failed to write material file: {$filePath}");
         }
+
+        // As with meshes: the snapshot of a past build is preferred over this
+        // file, so a stale entry would keep the edit from ever showing up.
+        ProjectAssetCache::forget($context->projectDir, 'materials', $sanitized);
 
         return [
             'saved' => true,

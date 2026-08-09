@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Project\ProjectAssetCache;
 use PHPolygon\Editor\Support\Path;
 use RuntimeException;
 
@@ -60,6 +61,14 @@ class SaveMeshCommand implements CommandInterface
         $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if ($json === false || file_put_contents($filePath, $json) === false) {
             throw new RuntimeException("Failed to write mesh file: {$filePath}");
+        }
+
+        // A raw mesh saved here is what the viewport resolves this id to. The
+        // per-project snapshot is preferred over the file, so a leftover entry
+        // from an import or an earlier scene build would keep serving the shape
+        // from before this edit — every time the scene is reopened.
+        if ($raw !== null) {
+            ProjectAssetCache::forget($context->projectDir, 'meshes', $sanitized);
         }
 
         return [
