@@ -1,5 +1,6 @@
 import { post } from './api';
 import type {
+    ComponentData,
     ComponentListResponse,
     SceneData,
     HierarchyResponse,
@@ -42,10 +43,21 @@ export interface SaveSceneResult {
     /** Set when the saved file could not carry some component values. */
     warning?: string | null;
     dropped?: { entity: string; component: string; properties: string[] }[];
+    /** Prefab instances expanded into entities (flattened saves only). */
+    flattened?: number;
+    /** Instances kept as references because their prefab could not be built. */
+    notFlattened?: string[];
 }
 
-export function saveScene(): Promise<SaveSceneResult> {
-    return cmd<SaveSceneResult>('save_scene');
+/**
+ * Write the active scene.
+ *
+ * `flatten` expands prefab references into the entities they produce. It is a
+ * projection of the document, not a change to it — the editor still shows
+ * instances afterwards and a plain save restores the compact form.
+ */
+export function saveScene(options: { flatten?: boolean } = {}): Promise<SaveSceneResult> {
+    return cmd<SaveSceneResult>('save_scene', options);
 }
 
 export function listScenes(): Promise<{ scenes: string[] }> {
@@ -182,6 +194,17 @@ export interface PropertyEdit {
  */
 export function updateProperties(edits: PropertyEdit[]): Promise<{ updated: number }> {
     return cmd<{ updated: number }>('update_properties', { edits });
+}
+
+/**
+ * Copy entities next to the originals, with components and descendants.
+ *
+ * Takes the whole selection so it lands as one undo step.
+ */
+export function duplicateEntity(
+    entities: string[],
+): Promise<{ duplicated: string[]; from: string[] }> {
+    return cmd<{ duplicated: string[]; from: string[] }>('duplicate_entity', { entities });
 }
 
 export function getEntityHierarchy(): Promise<HierarchyResponse> {
@@ -476,6 +499,60 @@ export function createPrefabClass(
     options: { className?: string; namespace?: string; overwrite?: boolean } = {},
 ): Promise<PrefabClassResult> {
     return cmd<PrefabClassResult>('create_prefab_class', { entityName, ...options });
+}
+
+export interface PrefabBaselineResult {
+    class: string;
+    /** False when the prefab could not be built here — no override marks then. */
+    available: boolean;
+    components: ComponentData[];
+}
+
+export interface PrefabEditSession {
+    /** The prefab class whose contents are now the active document. */
+    editingPrefab: string;
+    name: string;
+    /** False when the class was hand-edited — saving would discard that work. */
+    writable: boolean;
+    entities: EntityNode[];
+}
+
+/**
+ * Open a prefab's own contents for editing. REPLACES the active document, so
+ * the caller saves the scene first.
+ */
+export function loadPrefabClass(prefabClass: string): Promise<PrefabEditSession> {
+    return cmd<PrefabEditSession>('load_prefab_class', { class: prefabClass });
+}
+
+/** Turn a legacy `assets/prefabs/*.prefab.json` snapshot into a prefab class. */
+export function convertPrefabAsset(
+    path: string,
+    options: { className?: string; overwrite?: boolean } = {},
+): Promise<PrefabClassResult & { from: string; converted: boolean }> {
+    return cmd<PrefabClassResult & { from: string; converted: boolean }>(
+        'convert_prefab_asset',
+        { path, ...options },
+    );
+}
+
+/** What a prefab produces on its own, to tell overrides from inherited values. */
+export function getPrefabBaseline(
+    target: { class?: string; entity?: string },
+): Promise<PrefabBaselineResult> {
+    return cmd<PrefabBaselineResult>('get_prefab_baseline', target);
+}
+
+/**
+ * Hand an overridden value back to the prefab. Omit `property` to drop the
+ * whole component's overrides.
+ */
+export function revertPrefabOverride(
+    entity: string,
+    component: string,
+    property?: string,
+): Promise<{ reverted: boolean }> {
+    return cmd<{ reverted: boolean }>('revert_prefab_override', { entity, component, property });
 }
 
 /** Save a generated WAV (base64, no data-URL prefix needed) to assets/audio/. */

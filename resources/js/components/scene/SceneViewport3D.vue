@@ -49,8 +49,19 @@ let scene: THREE.Scene | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
 let orbit: OrbitControls | null = null;
 let gizmo: TransformControls | null = null;
-let outline: THREE.BoxHelper | null = null;
+let outlines: THREE.BoxHelper[] = [];
 let grid: THREE.GridHelper | null = null;
+
+/** Invisible anchor the gizmo drives when several entities are selected. */
+const pivot = new THREE.Object3D();
+let pivotStart = new THREE.Vector3();
+/** Each selected object with its offset/rotation/scale relative to the pivot. */
+let dragTargets: {
+    object: THREE.Object3D;
+    offset: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    scale: THREE.Vector3;
+}[] = [];
 let entityRoot: THREE.Group | null = null;
 let sync: EntitySync | null = null;
 let resizeObserver: ResizeObserver | null = null;
@@ -89,7 +100,7 @@ function renderFrame(): void {
     // update(), which re-sets the flag and keeps us rendering until it settles.
     needsRender = false;
     orbit?.update();
-    outline?.update();
+    for (const helper of outlines) helper.update();
     renderer.render(scene, camera);
 }
 
@@ -199,7 +210,7 @@ function refreshSculptMesh(): void {
         attributes.normal.needsUpdate = true;
         sculptMesh.geometry.computeBoundingSphere();
     }
-    outline?.update();
+    for (const helper of outlines) helper.update();
     invalidate();
 }
 
@@ -308,63 +319,143 @@ function onPointerUp(event: PointerEvent): void {
     const hits = raycaster.intersectObjects(entityRoot.children, true);
     const hit = hits.find((h) => sync!.entityNameFor(h.object));
     if (hit) {
-        selectionStore.selectEntity(sync.entityNameFor(hit.object));
-    } else {
+        // Ctrl/cmd adds to or removes from the selection, as everywhere else.
+        selectionStore.selectEntity(sync.entityNameFor(hit.object), {
+            additive: event.ctrlKey || event.metaKey,
+        });
+    } else if (!event.ctrlKey && !event.metaKey) {
+        // Clicking empty space with ctrl held is a missed add, not "deselect
+        // everything" — losing a built-up selection to a stray click is worse
+        // than doing nothing.
         selectionStore.selectEntity(null);
     }
 }
 
+/** The scene objects for the current selection, skipping any that are gone. */
+function selectedObjects(): THREE.Object3D[] {
+    if (!sync) return [];
+    const objects: THREE.Object3D[] = [];
+    for (const name of selectionStore.selectedEntities) {
+        const obj = sync.getObject(name);
+        if (obj) objects.push(obj);
+    }
+    return objects;
+}
+
+function clearOutlines(): void {
+    if (!scene) return;
+    for (const helper of outlines) {
+        scene.remove(helper);
+        helper.geometry.dispose();
+    }
+    outlines = [];
+}
+
 function refreshOutline(): void {
     if (!scene || !sync) return;
-    if (outline) {
-        scene.remove(outline);
-        outline.geometry.dispose();
-        outline = null;
+    clearOutlines();
+
+    const objects = selectedObjects();
+    const active = selectionStore.selectedEntity;
+
+    for (const obj of objects) {
+        // The active entity — the one the inspector edits — is highlighted
+        // brighter, so a multi-selection still says which one is "current".
+        const isActive = active !== null && sync.getObject(active) === obj;
+        const helper = new THREE.BoxHelper(obj, isActive ? 0xfca73a : 0x8a6a3a);
+        helper.update();
+        outlines.push(helper);
+        scene.add(helper);
     }
-    const selected = selectionStore.selectedEntity;
-    if (!selected) return;
-    const obj = sync.getObject(selected);
-    if (!obj) return;
-    outline = new THREE.BoxHelper(obj, 0xfca73a);
-    outline.update();
-    scene.add(outline);
 }
 
 function attachGizmo(): void {
-    if (!gizmo || !sync) return;
+    if (!gizmo || !scene) return;
+
     // The live world is read-only: its entities exist in the running game, not
     // in the document a transform write would land in.
-    const selected = showingLiveWorld.value ? null : selectionStore.selectedEntity;
-    if (!selected) {
+    const objects = showingLiveWorld.value ? [] : selectedObjects();
+    dragTargets = [];
+
+    if (objects.length === 0) {
         gizmo.detach();
         return;
     }
-    const obj = sync.getObject(selected);
-    if (obj) gizmo.attach(obj);
-    else gizmo.detach();
+
+    if (objects.length === 1) {
+        gizmo.attach(objects[0]);
+        return;
+    }
+
+    // Several objects cannot share a gizmo, so it drives an invisible pivot at
+    // the selection's centre and every object follows the pivot's delta. The
+    // alternative — attaching to one of them — would move that one only.
+    const centre = new THREE.Vector3();
+    const box = new THREE.Box3();
+    for (const obj of objects) {
+        box.setFromObject(obj);
+        centre.add(box.getCenter(new THREE.Vector3()));
+    }
+    centre.divideScalar(objects.length);
+
+    pivot.position.copy(centre);
+    pivot.quaternion.identity();
+    pivot.scale.set(1, 1, 1);
+    pivot.updateMatrixWorld(true);
+    if (!pivot.parent) scene.add(pivot);
+
+    dragTargets = objects.map((object) => ({
+        object,
+        offset: object.position.clone().sub(centre),
+        quaternion: object.quaternion.clone(),
+        scale: object.scale.clone(),
+    }));
+    pivotStart = centre.clone();
+
+    gizmo.attach(pivot);
+}
+
+/**
+ * Move every selected object by the pivot's delta.
+ *
+ * Runs on each gizmo change so the viewport shows the whole selection moving,
+ * not just the pivot.
+ */
+function applyPivotToTargets(): void {
+    if (dragTargets.length === 0) return;
+
+    for (const target of dragTargets) {
+        target.object.position.copy(
+            target.offset.clone().multiply(pivot.scale).applyQuaternion(pivot.quaternion).add(pivot.position),
+        );
+        target.object.quaternion.copy(pivot.quaternion).multiply(target.quaternion);
+        target.object.scale.copy(target.scale).multiply(pivot.scale);
+        target.object.updateMatrixWorld(true);
+    }
 }
 
 async function writeSelectedTransform(): Promise<void> {
     if (!sync) return;
-    const selected = selectionStore.selectedEntity;
-    if (!selected) return;
-    const obj = sync.getObject(selected);
-    if (!obj) return;
 
-    // One request, one undo entry: a drag changes position/rotation/scale
-    // together, so writing them per-property would make ctrl+Z undo only the
-    // last of the three.
-    await sceneStore.updateProperties([
-        {
-            entity: selected,
+    const edits: { entity: string; component: string; properties: Record<string, unknown> }[] = [];
+    for (const name of selectionStore.selectedEntities) {
+        const obj = sync.getObject(name);
+        if (!obj) continue;
+        edits.push({
+            entity: name,
             component: TRANSFORM3D_CLASS,
             properties: {
                 position: { x: obj.position.x, y: obj.position.y, z: obj.position.z },
                 rotation: { x: obj.quaternion.x, y: obj.quaternion.y, z: obj.quaternion.z, w: obj.quaternion.w },
                 scale: { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z },
             },
-        },
-    ]);
+        });
+    }
+
+    // One request, one undo entry: a drag changes position/rotation/scale
+    // together — and across every selected entity — so writing them separately
+    // would make ctrl+Z undo a fraction of the drag.
+    await sceneStore.updateProperties(edits);
 }
 
 function focusOnSelection(): void {
@@ -595,11 +686,15 @@ function setup(): void {
         } else {
             void writeSelectedTransform().finally(() => {
                 suppressSyncWhileDragging = false;
+                // Re-anchor: the pivot's offsets were measured against where the
+                // objects were before this drag.
+                attachGizmo();
             });
         }
     });
     gizmo.addEventListener('objectChange', () => {
-        outline?.update();
+        applyPivotToTargets();
+        for (const helper of outlines) helper.update();
         invalidate();
     });
     const gizmoHelper = gizmo.getHelper();
@@ -639,10 +734,8 @@ function cleanup(): void {
         renderer.domElement.removeEventListener('pointermove', onSculptPointerMove);
         renderer.domElement.removeEventListener('pointercancel', endSculpt);
     }
-    if (outline) {
-        outline.geometry.dispose();
-        outline = null;
-    }
+    clearOutlines();
+    dragTargets = [];
     if (grid) {
         grid.geometry.dispose();
         (grid.material as THREE.Material).dispose();
@@ -696,7 +789,7 @@ watch(
 );
 
 watch(
-    () => selectionStore.selectedEntity,
+    () => selectionStore.selectedEntities,
     () => {
         attachGizmo();
         refreshOutline();

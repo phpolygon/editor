@@ -14,9 +14,10 @@ const postMock = post as unknown as Mock;
 
 const TRANSFORM3D = 'PHPolygon\\Component\\Transform3D';
 
-function entity(name: string, parentEntityId: number | null = null) {
+function entity(name: string, parentEntityId: number | null = null, id?: number) {
     return {
         name,
+        ...(id === undefined ? {} : { id }),
         components: [
             {
                 _class: TRANSFORM3D,
@@ -62,9 +63,10 @@ describe('useEditorStore — live world', () => {
         vi.useRealTimers();
     });
 
-    it('renders the running game world and drops child entities', async () => {
-        // A child's transform is relative to a parent the snapshot gives no id
-        // for, so showing it would put it at a plainly wrong position.
+    it('drops children when the snapshot carries no entity ids', async () => {
+        // Older engines export names only, so a child's parent reference has
+        // nothing to resolve against — and its transform is relative to that
+        // parent. Showing it would put it at a plainly wrong position.
         respondWith({
             available: true,
             changed: true,
@@ -79,6 +81,66 @@ describe('useEditorStore — live world', () => {
         expect(store.liveEntities?.map((e) => e.name)).toEqual(['Ground', 'Player']);
         expect(store.liveChildrenOmitted).toBe(1);
         expect(store.liveWorldAvailable).toBe(true);
+    });
+
+    it('nests children under their parent when ids are present', async () => {
+        respondWith({
+            available: true,
+            changed: true,
+            mtime: 42,
+            entities: [
+                entity('Ground', null, 1),
+                entity('Player', null, 2),
+                entity('Player_Hand', 2, 3),
+            ],
+        });
+
+        const store = useEditorStore();
+        await store.play();
+        await settle();
+
+        expect(store.liveEntities?.map((e) => e.name)).toEqual(['Ground', 'Player']);
+        const player = store.liveEntities?.find((e) => e.name === 'Player');
+        expect(player?.children.map((c) => c.name)).toEqual(['Player_Hand']);
+        expect(store.liveChildrenOmitted).toBe(0);
+    });
+
+    it('nests deeply, not just one level', async () => {
+        respondWith({
+            available: true,
+            changed: true,
+            mtime: 42,
+            entities: [
+                entity('Player', null, 1),
+                entity('Arm', 1, 2),
+                entity('Hand', 2, 3),
+            ],
+        });
+
+        const store = useEditorStore();
+        await store.play();
+        await settle();
+
+        const arm = store.liveEntities?.[0].children[0];
+        expect(arm?.name).toBe('Arm');
+        expect(arm?.children[0].name).toBe('Hand');
+    });
+
+    it('omits a child whose parent is missing from the snapshot', async () => {
+        // Placing it by a transform relative to something absent would be wrong.
+        respondWith({
+            available: true,
+            changed: true,
+            mtime: 42,
+            entities: [entity('Player', null, 1), entity('Orphan', 99, 2)],
+        });
+
+        const store = useEditorStore();
+        await store.play();
+        await settle();
+
+        expect(store.liveEntities?.map((e) => e.name)).toEqual(['Player']);
+        expect(store.liveChildrenOmitted).toBe(1);
     });
 
     it('reports a game that does not mirror its world', async () => {

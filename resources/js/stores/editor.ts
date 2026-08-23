@@ -22,20 +22,64 @@ interface PlayWorld {
     entities?: EntityNode[];
 }
 
-/**
- * A live entity's Transform3D carries `parentEntityId`, but the world snapshot
- * identifies entities by name only — there is no id to resolve the reference
- * against. Child transforms are relative to their parent, so rendering them
- * without that link would place them at plainly wrong positions. Until the
- * engine's exporter emits entity ids, children are left out: an incomplete
- * live view beats a misleading one.
- */
 const TRANSFORM3D = 'PHPolygon\\Component\\Transform3D';
 
-function isChildEntity(entity: EntityNode): boolean {
+function parentIdOf(entity: EntityNode): number | null {
     const transform = entity.components.find((c) => c._class === TRANSFORM3D);
     const parent = transform?.properties?.parentEntityId;
-    return typeof parent === 'number';
+    return typeof parent === 'number' ? parent : null;
+}
+
+/**
+ * Turn the flat world snapshot into the nested tree the viewport renders.
+ *
+ * A live entity's Transform3D references its parent BY id, and a child's
+ * transform is relative to that parent — so the link has to be rebuilt or the
+ * child ends up at a plainly wrong position.
+ *
+ * Engines that do not send entity ids (before the exporter carried them) leave
+ * nothing to resolve the reference against. Children are then dropped rather
+ * than misplaced, and the count says how many: an incomplete live view beats a
+ * misleading one.
+ */
+function nestLiveEntities(entities: EntityNode[]): { roots: EntityNode[]; omitted: number } {
+    const byId = new Map<number, EntityNode>();
+    for (const entity of entities) {
+        if (typeof entity.id === 'number') byId.set(entity.id, entity);
+    }
+
+    if (byId.size === 0) {
+        const roots = entities.filter((e) => parentIdOf(e) === null);
+        return { roots, omitted: entities.length - roots.length };
+    }
+
+    const nested = new Map<EntityNode, EntityNode>();
+    for (const entity of entities) {
+        nested.set(entity, { ...entity, children: [] });
+    }
+
+    const roots: EntityNode[] = [];
+    let omitted = 0;
+    for (const entity of entities) {
+        const copy = nested.get(entity)!;
+        const parentId = parentIdOf(entity);
+        if (parentId === null) {
+            roots.push(copy);
+            continue;
+        }
+
+        const parent = byId.get(parentId);
+        const parentCopy = parent ? nested.get(parent) : undefined;
+        if (parentCopy) {
+            parentCopy.children.push(copy);
+        } else {
+            // Parent not in the snapshot: placing the child by a transform
+            // relative to something absent would be wrong, so leave it out.
+            omitted++;
+        }
+    }
+
+    return { roots, omitted };
 }
 
 /** How often the editor polls a running game for new output. */
@@ -128,9 +172,8 @@ export const useEditorStore = defineStore('editor', () => {
             liveWorldAvailable.value = world.available;
             if (!world.available || world.changed !== true) return;
 
-            const entities = world.entities ?? [];
-            const roots = entities.filter((e) => !isChildEntity(e));
-            liveChildrenOmitted.value = entities.length - roots.length;
+            const { roots, omitted } = nestLiveEntities(world.entities ?? []);
+            liveChildrenOmitted.value = omitted;
             liveEntities.value = roots;
             liveMtime = world.mtime ?? 0;
         } catch {

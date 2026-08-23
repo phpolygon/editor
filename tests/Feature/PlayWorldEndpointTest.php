@@ -72,6 +72,28 @@ class PlayWorldEndpointTest extends TestCase
             ->assertJsonPath('data.entities.0.components.0.properties.position.x', 1);
     }
 
+    public function test_entity_ids_reach_the_viewport(): void
+    {
+        // The viewport rebuilds the live hierarchy from Transform3D's parent
+        // reference, which resolves against these ids. Formatting the snapshot
+        // for the frontend must not drop them.
+        $this->writeWorld('dd33dd33dd33dd33', json_encode([
+            'name' => 'game_world',
+            'entities' => [
+                ['id' => 1, 'name' => 'Player', 'components' => []],
+                ['id' => 2, 'name' => 'Hand', 'components' => [
+                    ['_class' => 'PHPolygon\\Component\\Transform3D', 'parentEntityId' => 1],
+                ]],
+            ],
+        ]));
+
+        $this->getJson('/api/editor/project/play-world?id=dd33dd33dd33dd33')
+            ->assertOk()
+            ->assertJsonPath('data.entities.0.id', 1)
+            ->assertJsonPath('data.entities.1.id', 2)
+            ->assertJsonPath('data.entities.1.components.0.properties.parentEntityId', 1);
+    }
+
     public function test_skips_a_snapshot_the_caller_already_has(): void
     {
         // The engine only re-exports on structural change, so most polls have

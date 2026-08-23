@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, type Component } from 'vue';
-import { MousePointerClick, Shapes, Palette, Sparkles, Mountain } from 'lucide-vue-next';
+import { computed, ref, watch, type Component } from 'vue';
+import { MousePointerClick, Shapes, Palette, Sparkles, Mountain, Package } from 'lucide-vue-next';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import ComponentSection from './ComponentSection.vue';
 import AddComponentMenu from './AddComponentMenu.vue';
@@ -10,6 +10,7 @@ import { useSelectionStore } from '@/stores/selection';
 import { useSceneStore } from '@/stores/scene';
 import { useComponentsStore } from '@/stores/components';
 import { useEditorStore } from '@/stores/editor';
+import { usePrefabStore } from '@/stores/prefab';
 import { useMeshEditorStore } from '@/stores/meshEditor';
 import { useMaterialEditorStore } from '@/stores/materialEditor';
 import { useShaderEditorStore } from '@/stores/shaderEditor';
@@ -33,10 +34,85 @@ const shaderEditorStore = useShaderEditorStore();
 const terrainEditorStore = useTerrainEditorStore();
 const { addToast } = useToast();
 
+const prefabStore = usePrefabStore();
+
 const selectedEntityData = computed(() => {
     if (!selectionStore.selectedEntity) return null;
     return sceneStore.findEntity(selectionStore.selectedEntity);
 });
+
+/** The prefab this entity instantiates, if any. */
+const prefabClass = computed(() => selectedEntityData.value?.prefab ?? null);
+
+// A prefab instance stores only its overrides, so its inherited values have to
+// be fetched before the inspector can show a complete object.
+watch(
+    prefabClass,
+    (next) => {
+        if (next) void prefabStore.loadBaseline(next);
+    },
+    { immediate: true },
+);
+
+/**
+ * Components as shown: for a prefab instance the prefab's own components merged
+ * with the instance's overrides, otherwise just the entity's own.
+ */
+const shownComponents = computed(() => prefabStore.componentsFor(selectedEntityData.value));
+
+const shortPrefabName = computed(() => {
+    const parts = (prefabClass.value ?? '').split('\\');
+    return parts[parts.length - 1] ?? '';
+});
+
+const overrideCount = computed(() =>
+    shownComponents.value.reduce((n, c) => n + c.overridden.size, 0),
+);
+
+/** Null while the baseline is still loading or could not be built. */
+const baselineAvailable = computed(
+    () => !prefabClass.value || prefabStore.baselines.get(prefabClass.value) != null,
+);
+
+/**
+ * Open the prefab this instance comes from.
+ *
+ * Saves the scene first: opening a prefab replaces the active document, and an
+ * unsaved scene would be gone.
+ */
+async function editPrefab() {
+    const target = prefabClass.value;
+    if (!target || opening.value) return;
+
+    opening.value = true;
+    try {
+        if (sceneStore.dirty) await sceneStore.save();
+        await sceneStore.openPrefab(target);
+        selectionStore.clearSelection();
+        addToast(
+            sceneStore.prefabWritable
+                ? `Editing ${shortPrefabName.value} — save to update every instance`
+                : `${shortPrefabName.value} was edited by hand; saving would discard that`,
+            sceneStore.prefabWritable ? 'info' : 'error',
+        );
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to open the prefab', 'error');
+    } finally {
+        opening.value = false;
+    }
+}
+
+async function revert(component: string, property?: string) {
+    const entity = selectedEntityData.value?.name;
+    if (!entity) return;
+    try {
+        await prefabStore.revert(entity, component, property);
+        await sceneStore.refreshHierarchy();
+        await sceneStore.expandPreview();
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to revert the override', 'error');
+    }
+}
 
 // What each authoring workspace could take over for this entity.
 const meshTarget = computed(() => resolveEntityMesh(selectedEntityData.value));
@@ -157,12 +233,42 @@ async function go(jump: WorkspaceJump) {
                     </div>
                 </div>
 
+                <!-- A prefab instance is not an ordinary entity: most of what
+                     is listed below belongs to the prefab, and only the marked
+                     values are this instance's own. -->
+                <div
+                    v-if="prefabClass"
+                    class="flex items-center gap-2 px-2 py-1.5 border-b border-editor-border bg-editor-elevated"
+                >
+                    <Package :size="13" class="text-editor-accent shrink-0" />
+                    <span class="text-[11px] text-editor-text truncate" :title="prefabClass">
+                        Instance of {{ shortPrefabName }}
+                    </span>
+                    <span class="ml-auto text-[11px] text-editor-muted whitespace-nowrap">
+                        <template v-if="!baselineAvailable">prefab values unavailable</template>
+                        <template v-else-if="overrideCount === 0">no overrides</template>
+                        <template v-else>{{ overrideCount }} overridden</template>
+                    </span>
+                    <button
+                        class="shrink-0 text-[11px] text-editor-accent hover:underline disabled:opacity-40"
+                        :disabled="opening"
+                        title="Edit the prefab itself — changes reach every instance"
+                        @click="editPrefab"
+                    >
+                        Edit
+                    </button>
+                </div>
+
                 <ComponentSection
-                    v-for="comp in selectedEntityData.components"
-                    :key="comp._class"
+                    v-for="comp in shownComponents"
+                    :key="comp.data._class"
                     :entity-name="selectedEntityData.name"
-                    :component-data="comp"
-                    :schema="componentsStore.schemasCache.get(comp._class) ?? null"
+                    :component-data="comp.data"
+                    :schema="componentsStore.schemasCache.get(comp.data._class) ?? null"
+                    :overridden="comp.overridden"
+                    :inherited="comp.inherited"
+                    :from-prefab="prefabClass !== null"
+                    @revert="(property?: string) => revert(comp.data._class, property)"
                 />
 
                 <div class="p-1 border-t border-editor-border">

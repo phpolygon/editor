@@ -19,8 +19,12 @@ class CreateEntityCommand implements CommandInterface
             throw new RuntimeException('No active scene document');
         }
 
-        $name = is_string($this->args['name'] ?? null) ? $this->args['name'] : 'NewEntity';
+        $requested = is_string($this->args['name'] ?? null) ? $this->args['name'] : 'NewEntity';
         $parent = is_string($this->args['parent'] ?? null) ? $this->args['parent'] : null;
+
+        // Commands address entities by name, so a duplicate would make one of
+        // the two unreachable.
+        $name = $doc->uniqueName($requested);
 
         $doc->addEntity($name, $parent);
 

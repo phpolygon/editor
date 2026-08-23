@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { Undo2 } from 'lucide-vue-next';
 import type { PropertySchemaDTO } from '@/types';
 import { useSceneStore } from '@/stores/scene';
 import { resolveFieldComponent } from './resolveFieldComponent';
 import ObjectArrayField from './ObjectArrayField.vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     schema: PropertySchemaDTO;
     value: unknown;
     entityName: string;
     componentClass: string;
-}>();
+    /** This instance sets its own value here instead of the prefab's. */
+    overridden?: boolean;
+    /** The entity is a prefab instance, so reverting is possible at all. */
+    revertable?: boolean;
+}>(), {
+    overridden: false,
+    revertable: false,
+});
+
+const emit = defineEmits<{ revert: [] }>();
 
 const sceneStore = useSceneStore();
 
@@ -62,7 +72,33 @@ async function onUpdate(newValue: unknown) {
 </script>
 
 <template>
+    <!-- On a prefab instance the revert slot is always reserved, visible only
+         where there is something to revert — otherwise field widths would jump
+         between overridden and inherited rows. -->
+    <div v-if="revertable" class="flex items-start gap-1">
+        <div
+            class="flex-1 min-w-0"
+            :class="overridden ? 'border-l-2 border-editor-accent pl-1.5 -ml-0.5' : 'pl-2'"
+            :title="overridden ? 'Overridden on this instance' : 'Value comes from the prefab'"
+        >
+            <component
+                :is="fieldComponent"
+                v-bind="fieldProps"
+                @update:model-value="onUpdate"
+            />
+        </div>
+        <button
+            class="mt-1 shrink-0 w-4 text-editor-muted hover:text-editor-text disabled:opacity-0"
+            :disabled="!overridden"
+            title="Revert to the prefab's value"
+            @click="emit('revert')"
+        >
+            <Undo2 :size="11" />
+        </button>
+    </div>
+
     <component
+        v-else
         :is="fieldComponent"
         v-bind="fieldProps"
         @update:model-value="onUpdate"

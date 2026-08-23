@@ -6,8 +6,9 @@ namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
 use PHPolygon\Editor\Registry\PrefabScanner;
+use PHPolygon\Editor\Scene\PrefabBaseline;
+use PHPolygon\Editor\Scene\PrefabClassFile;
 use PHPolygon\Editor\Scene\PrefabClassGenerator;
-use PHPolygon\Editor\Support\Path;
 use RuntimeException;
 
 /**
@@ -34,8 +35,6 @@ use RuntimeException;
  */
 class CreatePrefabClassCommand implements CommandInterface
 {
-    private const SUBNAMESPACE = 'Prefab';
-
     /** @param array<string, mixed> $args */
     public function __construct(private readonly array $args = []) {}
 
@@ -72,15 +71,20 @@ class CreatePrefabClassCommand implements CommandInterface
             throw new RuntimeException('Prefab name has no usable characters for a class name');
         }
 
-        [$rootNamespace, $rootPath] = $this->psr4Root($context);
+        [$rootNamespace] = $this->psr4Root($context);
         $namespace = is_string($this->args['namespace'] ?? null) && $this->args['namespace'] !== ''
             ? trim($this->args['namespace'], '\\')
-            : rtrim($rootNamespace, '\\').'\\'.self::SUBNAMESPACE;
+            : rtrim($rootNamespace, '\\').'\\'.PrefabClassFile::SUBNAMESPACE;
 
         $source = (new PrefabClassGenerator)->generate($entity, $namespace, $className);
 
-        $dir = Path::join($context->projectDir, $rootPath, self::SUBNAMESPACE);
-        $file = Path::join($dir, $className.'.php');
+        $file = PrefabClassFile::pathFor($context, $namespace.'\\'.$className);
+        if ($file === null) {
+            throw new RuntimeException(
+                "No PSR-4 root covers {$namespace}, so there is nowhere to write the prefab class."
+            );
+        }
+        $dir = dirname($file);
 
         $existing = is_file($file) ? (string) file_get_contents($file) : null;
         if ($existing !== null && ($this->args['overwrite'] ?? false) !== true
@@ -99,6 +103,10 @@ class CreatePrefabClassCommand implements CommandInterface
             throw new RuntimeException("Failed to write prefab class: {$file}");
         }
 
+        // The prefab's own values just changed, so what counts as an override
+        // on its instances did too.
+        PrefabBaseline::forget($namespace.'\\'.$className);
+
         return [
             'created' => true,
             'class' => $namespace.'\\'.$className,
@@ -110,7 +118,7 @@ class CreatePrefabClassCommand implements CommandInterface
     }
 
     /**
-     * The PSR-4 root the prefab class is written into.
+     * The PSR-4 root new prefab classes are namespaced under.
      *
      * @return array{0: string, 1: string} [namespace prefix, relative path]
      */

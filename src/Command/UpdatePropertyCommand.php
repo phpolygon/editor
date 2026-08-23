@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Scene\PrefabOverrides;
 use RuntimeException;
 
 class UpdatePropertyCommand implements CommandInterface
@@ -28,7 +29,15 @@ class UpdatePropertyCommand implements CommandInterface
             throw new RuntimeException("Missing 'entity', 'component', or 'property' argument");
         }
 
-        $doc->updateProperty($entityName, $componentClass, $property, $value);
+        $doc->applyPropertyEdits(PrefabOverrides::markCreatable($doc, [[
+            'entity' => $entityName,
+            'component' => $componentClass,
+            'properties' => [$property => $value],
+        ]]));
+
+        // On a prefab instance, a value equal to the prefab's own is not an
+        // override — see {@see PrefabOverrides}.
+        PrefabOverrides::prune($doc, [$entityName]);
 
         return ['entity' => $entityName, 'component' => $componentClass, 'property' => $property];
     }

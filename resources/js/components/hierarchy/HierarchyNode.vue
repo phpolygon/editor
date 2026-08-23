@@ -38,11 +38,15 @@ function toggle() {
     expanded.value = !expanded.value;
 }
 
-function select() {
-    selectionStore.selectEntity(props.node.name);
+function select(event: MouseEvent) {
+    selectionStore.selectEntity(props.node.name, {
+        additive: event.ctrlKey || event.metaKey,
+    });
 }
 
-const isSelected = () => selectionStore.selectedEntity === props.node.name;
+const isSelected = () => selectionStore.isSelected(props.node.name);
+/** The entity the inspector is editing, highlighted apart from the rest. */
+const isActive = () => selectionStore.selectedEntity === props.node.name;
 
 // Inline rename
 function startRename() {
@@ -153,9 +157,11 @@ async function onDrop(e: DragEvent) {
         <div
             class="flex items-center h-6 cursor-pointer text-xs select-none"
             :class="{
-                'bg-editor-accent/20 border-l-2 border-editor-accent': isSelected(),
+                'border-l-2 border-editor-accent': isSelected(),
+                'bg-editor-accent/20': isActive(),
+                'bg-editor-accent/10': isSelected() && !isActive(),
                 'hover:bg-editor-hover': !isSelected(),
-                'bg-editor-accent/10 border-b border-editor-accent': dragOver,
+                'border-b border-editor-accent': dragOver,
             }"
             :style="{ paddingLeft: `${depth * 16 + 4}px` }"
             draggable="true"

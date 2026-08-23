@@ -15,7 +15,13 @@ vi.mock('@/bridge/commands', () => ({
     renameEntity: vi.fn(),
     reparentEntity: vi.fn(),
     savePrefab: vi.fn(),
+    createPrefabClass: vi.fn(),
+    loadPrefabClass: vi.fn(),
+    convertPrefabAsset: vi.fn(),
     spawnPrefab: vi.fn(),
+    expandScene: vi.fn(),
+    getMeshes: vi.fn(),
+    getMaterials: vi.fn(),
     undo: vi.fn(),
     redo: vi.fn(),
 }));
@@ -160,6 +166,127 @@ describe('useSceneStore', () => {
         it('returns null for unknown entity', () => {
             const store = useSceneStore();
             expect(store.findEntity('Missing')).toBeNull();
+        });
+    });
+
+    describe('prefab editing', () => {
+        const PREFAB = 'Game\\Prefab\\Lamp';
+
+        function openSession() {
+            mocks.loadPrefabClass.mockResolvedValue({
+                editingPrefab: PREFAB,
+                name: 'Lamp',
+                writable: true,
+                entities: [{ name: 'Lamp', components: [], children: [] }],
+            });
+        }
+
+        it('replaces the document with the prefab contents', async () => {
+            openSession();
+            const store = useSceneStore();
+
+            await store.openPrefab(PREFAB);
+
+            expect(store.editingPrefab).toBe(PREFAB);
+            expect(store.name).toBe('Lamp');
+            expect(store.entities[0].name).toBe('Lamp');
+        });
+
+        it('saves as a prefab class, not as a scene', async () => {
+            // The document holds the prefab's contents; writing a scene file
+            // here would create one nobody asked for.
+            openSession();
+            const store = useSceneStore();
+            await store.openPrefab(PREFAB);
+
+            await store.save();
+
+            expect(mocks.saveScene).not.toHaveBeenCalled();
+            expect(mocks.createPrefabClass).toHaveBeenCalledWith('Lamp', {
+                className: 'Lamp',
+                overwrite: true,
+            });
+        });
+
+        it('reports a hand-edited prefab as not writable', async () => {
+            mocks.loadPrefabClass.mockResolvedValue({
+                editingPrefab: PREFAB,
+                name: 'Lamp',
+                writable: false,
+                entities: [{ name: 'Lamp', components: [], children: [] }],
+            });
+            const store = useSceneStore();
+
+            await store.openPrefab(PREFAB);
+
+            expect(store.prefabWritable).toBe(false);
+        });
+
+        it('returns to the scene it was opened from', async () => {
+            mocks.loadScene.mockResolvedValue({ name: 'Level', entities: [] });
+            mocks.getMeshes.mockResolvedValue({ meshes: [] });
+            mocks.getMaterials.mockResolvedValue({ materials: [] });
+            mocks.expandScene.mockResolvedValue({ expanded: false, entities: [] });
+            openSession();
+
+            const store = useSceneStore();
+            await store.load('Level');
+            await store.openPrefab(PREFAB);
+
+            const returned = await store.closePrefab();
+
+            expect(returned).toBe(true);
+            expect(store.editingPrefab).toBeNull();
+            expect(store.name).toBe('Level');
+        });
+
+        it('says so when there is no scene to return to', async () => {
+            openSession();
+            const store = useSceneStore();
+            await store.openPrefab(PREFAB);
+
+            expect(await store.closePrefab()).toBe(false);
+            expect(store.editingPrefab).toBeNull();
+        });
+
+        it('loading a scene leaves prefab editing', async () => {
+            mocks.loadScene.mockResolvedValue({ name: 'Level', entities: [] });
+            mocks.getMeshes.mockResolvedValue({ meshes: [] });
+            mocks.getMaterials.mockResolvedValue({ materials: [] });
+            mocks.expandScene.mockResolvedValue({ expanded: false, entities: [] });
+            openSession();
+            const store = useSceneStore();
+            await store.openPrefab(PREFAB);
+
+            await store.load('Level');
+
+            expect(store.editingPrefab).toBeNull();
+        });
+    });
+
+    describe('flattened export', () => {
+        it('asks the backend to expand prefab references', async () => {
+            mocks.saveScene.mockResolvedValue({ saved: 'x.php', flattened: 2, notFlattened: [] });
+            const store = useSceneStore();
+
+            const result = await store.exportFlattened();
+
+            expect(mocks.saveScene).toHaveBeenCalledWith({ flatten: true });
+            expect(result.flattened).toBe(2);
+        });
+
+        it('refuses while a prefab is open', async () => {
+            // The document is the prefab's contents, not a scene to flatten.
+            mocks.loadPrefabClass.mockResolvedValue({
+                editingPrefab: 'Game\\Prefab\\Lamp',
+                name: 'Lamp',
+                writable: true,
+                entities: [{ name: 'Lamp', components: [], children: [] }],
+            });
+            const store = useSceneStore();
+            await store.openPrefab('Game\\Prefab\\Lamp');
+
+            await expect(store.exportFlattened()).rejects.toThrow(/Close the prefab/);
         });
     });
 });

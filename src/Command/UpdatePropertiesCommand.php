@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PHPolygon\Editor\Command;
 
 use PHPolygon\Editor\EditorContext;
+use PHPolygon\Editor\Scene\PrefabOverrides;
 use RuntimeException;
 
 /**
@@ -72,7 +73,13 @@ class UpdatePropertiesCommand implements CommandInterface
             $edits[] = ['entity' => $entity, 'component' => $component, 'properties' => $clean];
         }
 
-        $doc->applyPropertyEdits($edits);
+        // Overriding a value a prefab instance only INHERITS needs the component
+        // attached first, or the write lands nowhere.
+        $doc->applyPropertyEdits(PrefabOverrides::markCreatable($doc, $edits));
+
+        // A value that matches the prefab is not an override; storing it would
+        // make the instance look customised where it is not.
+        PrefabOverrides::prune($doc, array_column($edits, 'entity'));
 
         return ['updated' => count($edits)];
     }

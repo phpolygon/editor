@@ -44,7 +44,8 @@ describe('PrefabBrowserPanel', () => {
         const wrapper = mount(PrefabBrowserPanel);
         await flushPromises();
 
-        useSelectionStore().selectedEntity = 'Ground';
+        // selectedEntity is derived from the selection now, so select properly.
+        useSelectionStore().selectEntity('Ground');
         await wrapper.find('[data-testid="prefab-Tree"]').trigger('click');
         await flushPromises();
 

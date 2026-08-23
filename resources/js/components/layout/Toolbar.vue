@@ -14,6 +14,7 @@ import {
     Redo2,
     Plus,
     Package,
+    PackageOpen,
     FileCode,
     Box,
     Circle,
@@ -24,6 +25,7 @@ import {
     Film,
     Terminal,
 } from 'lucide-vue-next';
+import * as commands from '@/bridge/commands';
 import { useSceneStore } from '@/stores/scene';
 import { useEditorStore } from '@/stores/editor';
 import { useProjectStore } from '@/stores/project';
@@ -125,6 +127,50 @@ async function saveAsPrefab() {
         addToast(`Saved prefab: ${result.name}`, 'success');
     } catch (e: any) {
         addToast(e?.message ?? 'Failed to save prefab', 'error');
+    }
+}
+
+/**
+ * Turn one of the project's legacy `.prefab.json` snapshots into a class.
+ *
+ * The JSON file stays put — scenes that already inlined a copy of it still
+ * work; converting changes what new placements get.
+ */
+async function convertPrefabAsset() {
+    // `path` is already relative to assets/ — the same form the converter and
+    // the spawner take.
+    let prefabs: { name: string; path: string }[] = [];
+    try {
+        const listed = await commands.listPrefabs();
+        prefabs = listed.prefabs ?? [];
+    } catch {
+        prefabs = [];
+    }
+
+    if (prefabs.length === 0) {
+        addToast('This project has no assets/prefabs/*.prefab.json to convert', 'info');
+        return;
+    }
+
+    const which = await prompt({
+        title: 'Convert JSON prefab',
+        message: `Which prefab? (${prefabs.map((p) => p.name).join(', ')})`,
+        value: prefabs[0].name,
+        placeholder: 'prefab name',
+    });
+    if (which === null) return;
+
+    const match = prefabs.find((p) => p.name === which);
+    if (!match) {
+        addToast(`No prefab named "${which}"`, 'error');
+        return;
+    }
+
+    try {
+        const result = await commands.convertPrefabAsset(match.path);
+        addToast(`Converted to ${result.className} — place it from the prefab palette`, 'success');
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to convert the prefab', 'error');
     }
 }
 
@@ -242,12 +288,63 @@ async function newScene() {
 }
 
 async function save() {
+    // While a prefab is open the store writes the prefab class instead; say so,
+    // because "Scene saved" would be a lie about what just happened.
+    const prefab = sceneStore.editingPrefab;
+
+    if (prefab && !sceneStore.prefabWritable) {
+        const ok = await confirm({
+            title: 'Prefab was edited by hand',
+            message:
+                'Saving regenerates this prefab and discards the changes made to its file directly. Continue?',
+            confirmLabel: 'Overwrite',
+            danger: true,
+        });
+        if (!ok) return;
+    }
+
     try {
         const warning = await sceneStore.save();
         if (warning) addToast(warning, 'error');
-        else addToast('Scene saved', 'success');
-    } catch {
-        addToast('Save failed', 'error');
+        else addToast(prefab ? 'Prefab saved — every instance follows it' : 'Scene saved', 'success');
+    } catch (e: any) {
+        addToast(e?.message ?? 'Save failed', 'error');
+    }
+}
+
+/**
+ * Write the scene with prefab references expanded.
+ *
+ * Separate from Save on purpose: the flattened file no longer follows its
+ * prefabs, so it is something you ask for explicitly.
+ */
+async function exportFlattened() {
+    try {
+        const result = await sceneStore.exportFlattened();
+        const kept = result.notFlattened?.length ?? 0;
+        addToast(
+            kept > 0
+                ? `Exported flattened — ${result.flattened} expanded, ${kept} kept as references`
+                : `Exported flattened — ${result.flattened} prefab instances expanded`,
+            kept > 0 ? 'info' : 'success',
+        );
+        if (result.warning) addToast(result.warning, 'info');
+    } catch (e: any) {
+        addToast(e?.message ?? 'Flattened export failed', 'error');
+    }
+}
+
+/** Leave prefab editing and return to the scene it was opened from. */
+async function closePrefab() {
+    try {
+        if (sceneStore.dirty) await sceneStore.save();
+        const returned = await sceneStore.closePrefab();
+        addToast(
+            returned ? 'Back to the scene' : 'Prefab closed — no scene was open to return to',
+            returned ? 'info' : 'info',
+        );
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to leave the prefab', 'error');
     }
 }
 
@@ -357,7 +454,30 @@ async function switchScene(sceneName: string) {
 
         <!-- Scene-only controls -->
         <template v-if="editorStore.workspace === 'scene'">
-            <ToolbarGroup>
+            <!-- Editing a prefab is a different mode: what is open is not a
+                 scene, and saving reaches every instance of it. -->
+            <ToolbarGroup v-if="sceneStore.editingPrefab">
+                <span
+                    class="inline-flex items-center gap-1.5 h-7 px-2 rounded-md bg-editor-accent/15
+                           text-editor-accent text-xs font-medium"
+                    :title="sceneStore.editingPrefab"
+                >
+                    <FileCode :size="13" />
+                    Prefab: {{ sceneStore.name }}
+                    <span v-if="!sceneStore.prefabWritable" class="text-amber-400">(hand-edited)</span>
+                </span>
+                <IconButton
+                    :icon="Save"
+                    label="Save prefab — updates every instance"
+                    :disabled="sceneStore.loading"
+                    @click="save"
+                />
+                <Button :icon="Undo2" title="Back to the scene" @click="closePrefab">
+                    Close
+                </Button>
+            </ToolbarGroup>
+
+            <ToolbarGroup v-else>
                 <Button
                     :icon="FilePlus2"
                     :disabled="!projectStore.opened"
@@ -371,6 +491,12 @@ async function switchScene(sceneName: string) {
                     label="Save scene (Ctrl+S)"
                     :disabled="sceneStore.loading || !sceneStore.name"
                     @click="save"
+                />
+                <IconButton
+                    :icon="PackageOpen"
+                    label="Export flattened — writes prefab contents into the scene instead of references"
+                    :disabled="sceneStore.loading || !sceneStore.name"
+                    @click="exportFlattened"
                 />
                 <IconButton
                     :icon="Undo2"
@@ -440,18 +566,28 @@ async function switchScene(sceneName: string) {
                         </Button>
                     </template>
                     <template #default="{ close }">
-                        <MenuLabel>Save selection as</MenuLabel>
                         <MenuItem
                             :icon="FileCode"
                             @click="() => { saveAsPrefabClass(); close(); }"
                         >
-                            PHP class — scenes reference it
+                            Save selection as prefab
                         </MenuItem>
+                        <MenuSeparator />
+                        <MenuLabel>Legacy</MenuLabel>
+                        <!-- JSON prefabs are copies: editing one reaches nothing
+                             already placed. Kept for the projects that have them,
+                             with a way out. -->
                         <MenuItem
                             :icon="Package"
                             @click="() => { saveAsPrefab(); close(); }"
                         >
-                            JSON snapshot — copied into scenes
+                            Save as JSON snapshot (copy)
+                        </MenuItem>
+                        <MenuItem
+                            :icon="FileCode"
+                            @click="() => { convertPrefabAsset(); close(); }"
+                        >
+                            Convert a JSON prefab to a class…
                         </MenuItem>
                     </template>
                 </Menu>

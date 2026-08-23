@@ -44,10 +44,25 @@ useKeyboardShortcuts({
     },
     'ctrl+z': () => sceneStore.undoAction(),
     'ctrl+shift+z': () => sceneStore.redoAction(),
-    'delete': () => {
-        if (selectionStore.selectedEntity) {
-            sceneStore.deleteEntity(selectionStore.selectedEntity);
-            selectionStore.clearSelection();
+    'ctrl+d': async () => {
+        const selected = [...selectionStore.selectedEntities];
+        if (selected.length === 0) return;
+        try {
+            const copies = await sceneStore.duplicateEntities(selected);
+            // Select the copies: that is what you want to move next, and it
+            // matches what a duplicate does everywhere else.
+            selectionStore.selectEntities(copies);
+            addToast(copies.length === 1 ? `Duplicated ${copies[0]}` : `Duplicated ${copies.length} entities`, 'success');
+        } catch (e: any) {
+            addToast(e?.message ?? 'Duplicate failed', 'error');
+        }
+    },
+    'delete': async () => {
+        const selected = [...selectionStore.selectedEntities];
+        if (selected.length === 0) return;
+        selectionStore.clearSelection();
+        for (const name of selected) {
+            await sceneStore.deleteEntity(name);
         }
     },
     'f2': () => {

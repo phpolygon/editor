@@ -263,7 +263,16 @@ class CreateGameProjectCommand implements CommandInterface
                     // standalone or packaged run never syncs.
                     \$editorSync = getenv('PHPOLYGON_EDITOR_SYNC');
                     if (is_string(\$editorSync) && \$editorSync !== '') {
-                        \$engine->enableEditorSync(\$editorSync);
+                        // Stream mode publishes movement, which the default
+                        // reconcile mode cannot: moving an entity changes
+                        // component values without changing the world's
+                        // structure. Guarded so the project also runs against
+                        // engine versions that predate the mode.
+                        if (enum_exists(\\PHPolygon\\EditorSyncMode::class)) {
+                            \$engine->enableEditorSync(\$editorSync, 0.5, \\PHPolygon\\EditorSyncMode::Stream);
+                        } else {
+                            \$engine->enableEditorSync(\$editorSync);
+                        }
                     }
                 });
 

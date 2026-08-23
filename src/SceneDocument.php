@@ -176,6 +176,165 @@ class SceneDocument
         return $this->findEntity($name, $this->getEntities());
     }
 
+    /**
+     * A name no entity in the document uses yet.
+     *
+     * The editor identifies entities BY NAME — every command takes one, and
+     * {@see getEntity()} answers with the first match. Two entities sharing a
+     * name therefore make one of them unaddressable: edits land on whichever
+     * comes first in the tree. Every path that introduces a name goes through
+     * here so that cannot happen.
+     */
+    /**
+     * @param  array<string, true>  $alsoTaken  Names not in the document yet but
+     *                                          already claimed by the caller —
+     *                                          a subtree being copied names its
+     *                                          children before any of them are
+     *                                          inserted.
+     */
+    public function uniqueName(string $base, array $alsoTaken = []): string
+    {
+        if ($base === '') {
+            $base = 'Entity';
+        }
+
+        $free = fn (string $candidate): bool => ! isset($alsoTaken[$candidate])
+            && $this->getEntity($candidate) === null;
+
+        if ($free($base)) {
+            return $base;
+        }
+
+        $i = 2;
+        while (! $free($base.'_'.$i)) {
+            $i++;
+        }
+
+        return $base.'_'.$i;
+    }
+
+    /**
+     * Deep-copy an entity, its components and its descendants.
+     *
+     * The copy lands next to the original (same parent) unless a parent is
+     * given. Descendants are renamed too: a duplicated subtree whose children
+     * kept their names would leave the document with unaddressable entities.
+     *
+     * @return string The new root entity's name, or '' when there was nothing
+     *                to copy.
+     */
+    public function duplicateEntity(string $name, ?string $parentName = null): string
+    {
+        return $this->duplicateEntities([$name], $parentName)[0] ?? '';
+    }
+
+    /**
+     * Duplicate several entities as ONE undoable step.
+     *
+     * Duplicating a selection is a single action; pushing an undo entry per
+     * entity would leave the user pressing ctrl+Z once per object to undo one
+     * gesture.
+     *
+     * @param  list<string>  $names
+     * @return list<string> The new entity names, in the order they were given.
+     */
+    public function duplicateEntities(array $names, ?string $parentName = null): array
+    {
+        $existing = array_values(array_filter(
+            $names,
+            fn (string $name): bool => $this->getEntity($name) !== null,
+        ));
+        if ($existing === []) {
+            return [];
+        }
+
+        $this->pushUndo();
+
+        $created = [];
+        foreach ($existing as $name) {
+            $entity = $this->getEntity($name);
+            if ($entity === null) {
+                continue;
+            }
+
+            $taken = [];
+            $copy = $this->copyWithFreshNames($entity, $this->uniqueName($name, $taken), $taken);
+            $parent = $parentName ?? $this->parentNameOf($name);
+
+            $entities = $this->getEntities();
+            if ($parent === null) {
+                $entities[] = $copy;
+            } else {
+                $this->addEntityToParent($copy['name'], $parent, $copy, $entities);
+            }
+            $this->data['entities'] = $entities;
+            $created[] = $copy['name'];
+        }
+
+        $this->dirty = true;
+
+        return $created;
+    }
+
+    /**
+     * @param  array<string, mixed>  $entity
+     * @param  array<string, true>  $taken  Names claimed so far in this copy.
+     * @return array<string, mixed>
+     */
+    private function copyWithFreshNames(array $entity, string $newName, array &$taken): array
+    {
+        $entity['name'] = $newName;
+        $taken[$newName] = true;
+
+        if (isset($entity['children']) && is_array($entity['children'])) {
+            $children = [];
+            /** @var list<array<string, mixed>> $entityChildren */
+            $entityChildren = $entity['children'];
+            foreach ($entityChildren as $child) {
+                if (! is_array($child)) {
+                    continue;
+                }
+                $childName = is_string($child['name'] ?? null) ? $child['name'] : 'Child';
+                $children[] = $this->copyWithFreshNames($child, $this->uniqueName($childName, $taken), $taken);
+            }
+            $entity['children'] = $children;
+        }
+
+        return $entity;
+    }
+
+    /**
+     * The name of an entity's parent; null both when it sits at the root and
+     * when it does not exist — the caller has already established that it does.
+     */
+    private function parentNameOf(string $name): ?string
+    {
+        $walk = function (array $entities, ?string $parent) use (&$walk, $name): ?string {
+            foreach ($entities as $entity) {
+                if (($entity['name'] ?? null) === $name) {
+                    // Sentinel: the empty string means "found, at the root",
+                    // which null cannot express here.
+                    return $parent ?? '';
+                }
+                if (isset($entity['children']) && is_array($entity['children'])) {
+                    $found = $walk(
+                        array_values($entity['children']),
+                        is_string($entity['name'] ?? null) ? $entity['name'] : null,
+                    );
+                    if ($found !== null) {
+                        return $found;
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        $found = $walk($this->getEntities(), null);
+
+        return ($found === null || $found === '') ? null : $found;
+    }
+
     public function addEntity(string $name, ?string $parentName = null): void
     {
         $this->pushUndo();
@@ -324,7 +483,14 @@ class SceneDocument
      * so a single ctrl+Z would only undo the scale. Multi-entity edits collapse
      * the same way — one drag stays one undo entry however many entities moved.
      *
-     * @param  list<array{entity: string, component: string, properties: array<string, mixed>}>  $edits
+     * An edit may set `create` to attach the component when the entity does not
+     * carry it yet. That is what overriding an INHERITED value on a prefab
+     * instance needs: the value shows in the inspector because the prefab
+     * produces it, but the instance has no component to write into until the
+     * first override makes one. It stays opt-in so a mistyped class name on a
+     * plain entity still writes nowhere instead of adding a junk component.
+     *
+     * @param  list<array{entity: string, component: string, properties: array<string, mixed>, create?: bool}>  $edits
      */
     public function applyPropertyEdits(array $edits): void
     {
@@ -334,8 +500,59 @@ class SceneDocument
 
         $this->pushUndo();
         foreach ($edits as $edit) {
+            if (($edit['create'] ?? false) === true) {
+                $this->ensureComponent($edit['entity'], $edit['component']);
+            }
             $this->writeProperties($edit['entity'], $edit['component'], $edit['properties']);
         }
+        $this->dirty = true;
+    }
+
+    /**
+     * Attach a bare component if the entity has none of that class, without
+     * touching the undo stack.
+     */
+    private function ensureComponent(string $entityName, string $componentClass): void
+    {
+        $entity = $this->getEntity($entityName);
+        if ($entity === null) {
+            return;
+        }
+
+        $components = is_array($entity['components'] ?? null) ? $entity['components'] : [];
+        foreach ($components as $component) {
+            if (is_array($component) && ($component['_class'] ?? '') === $componentClass) {
+                return;
+            }
+        }
+
+        $this->modifyEntity($entityName, function (array &$entity) use ($componentClass) {
+            $components = is_array($entity['components'] ?? null) ? $entity['components'] : [];
+            $components[] = ['_class' => $componentClass];
+            $entity['components'] = array_values($components);
+        });
+    }
+
+    /**
+     * Replace an entity's component list.
+     *
+     * `$undoable = false` folds the change into whatever step is already in
+     * progress — what prefab override-stripping needs: the write and the strip
+     * are one edit from the user's side, and pushing twice would make ctrl+Z
+     * restore a half-stripped state nobody ever saw.
+     *
+     * @param  list<array<string, mixed>>  $components
+     */
+    public function setEntityComponents(string $entityName, array $components, bool $undoable = true): void
+    {
+        if ($undoable) {
+            $this->pushUndo();
+        }
+
+        $this->modifyEntity($entityName, function (array &$entity) use ($components) {
+            $entity['components'] = array_values($components);
+        });
+
         $this->dirty = true;
     }
 

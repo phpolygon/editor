@@ -5,6 +5,17 @@ export interface EntityNode {
     components: ComponentData[];
     children: EntityNode[];
     expanded?: boolean;
+    /**
+     * Prefab class this entity is an instance of. Its `components` are then the
+     * authored OVERRIDES on top of what the prefab's build() produces, not the
+     * entity's full component set.
+     */
+    prefab?: string;
+    /**
+     * Live ECS entity id — only present in a running game's world snapshot,
+     * where it is what Transform3D's parent reference resolves against.
+     */
+    id?: number;
 }
 
 export interface ComponentData {

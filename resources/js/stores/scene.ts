@@ -91,6 +91,19 @@ export const useSceneStore = defineStore('scene', () => {
     const sceneList = ref<string[]>([]);
     const mode = ref<SceneMode>('3d');
 
+    /**
+     * The prefab class currently open for editing, if any.
+     *
+     * While set, the document holds that prefab's contents rather than a scene:
+     * saving regenerates the class, and the scene the user came from has to be
+     * reopened afterwards. Null means an ordinary scene is open.
+     */
+    const editingPrefab = ref<string | null>(null);
+    /** False when the open prefab was hand-edited and must not be regenerated. */
+    const prefabWritable = ref(true);
+    /** The scene to return to when prefab editing ends. */
+    const prefabReturnScene = ref('');
+
     // The viewport renders the expanded geometry when a preview is available,
     // else the authored entities; the hierarchy always uses `entities`.
     const viewEntities = computed<EntityNode[]>(() => previewEntities.value ?? entities.value);
@@ -135,6 +148,7 @@ export const useSceneStore = defineStore('scene', () => {
             // request each — the single-threaded dev server would otherwise
             // serialise hundreds of round-trips into ~tens of seconds.
             await preloadAssets();
+            clearPrefabState(); // loading a scene leaves prefab editing behind
             sourceName.value = sceneName; // the file basename we loaded from
             name.value = data.name;
             entities.value = normaliseEntities(data.entities);
@@ -212,6 +226,7 @@ export const useSceneStore = defineStore('scene', () => {
         loading.value = true;
         try {
             const data = await commands.createScene(sceneName);
+            clearPrefabState();
             name.value = data.name;
             entities.value = normaliseEntities(data.entities);
             mode.value = resolveMode(data.name, entities.value);
@@ -234,11 +249,34 @@ export const useSceneStore = defineStore('scene', () => {
      * could not carry some component values, so the caller can surface it —
      * silently losing an edited mesh graph or heightmap is worse than a save
      * that says what it dropped.
+     *
+     * While a prefab is open ({@link editingPrefab}) this writes the prefab
+     * class instead: the document holds the prefab's contents, and saving it as
+     * a scene would create a scene file nobody asked for.
      */
     async function save(): Promise<string | null> {
+        const prefab = editingPrefab.value;
+        if (prefab) return await savePrefabEdit(prefab);
+
         const result = await commands.saveScene();
         dirty.value = false;
         return result.warning ?? null;
+    }
+
+    /**
+     * Export the scene with prefab references expanded into entities.
+     *
+     * Deliberately separate from {@link save}: the flattened file loses the
+     * link back to the prefabs, so it is something you ask for, never what a
+     * plain save does.
+     */
+    async function exportFlattened(): Promise<commands.SaveSceneResult> {
+        if (editingPrefab.value) {
+            throw new Error('Close the prefab before exporting a flattened scene.');
+        }
+        const result = await commands.saveScene({ flatten: true });
+        dirty.value = false;
+        return result;
     }
 
     async function refreshHierarchy() {
@@ -286,6 +324,77 @@ export const useSceneStore = defineStore('scene', () => {
         return await commands.createPrefabClass(entityName, options);
     }
 
+    /**
+     * Open a prefab's contents for editing, replacing whatever is open.
+     *
+     * The caller saves first — this discards the active document the same way
+     * loading another scene does.
+     */
+    async function openPrefab(prefabClass: string) {
+        loading.value = true;
+        try {
+            const session = await commands.loadPrefabClass(prefabClass);
+            await preloadAssets();
+            // Remember where to go back to before the document is replaced.
+            if (!editingPrefab.value) prefabReturnScene.value = sourceName.value;
+            editingPrefab.value = session.editingPrefab;
+            prefabWritable.value = session.writable;
+            sourceName.value = '';
+            name.value = session.name;
+            entities.value = normaliseEntities(session.entities);
+            previewEntities.value = null;
+            dirty.value = false;
+        } finally {
+            loading.value = false;
+        }
+    }
+
+    /** Write the open prefab back out as its class. */
+    async function savePrefabEdit(prefabClass: string): Promise<string | null> {
+        const root = entities.value[0];
+        if (!root) throw new Error('The prefab has no root entity to save.');
+
+        const parts = prefabClass.split('\\');
+        await commands.createPrefabClass(root.name, {
+            className: parts[parts.length - 1],
+            // The open session already established this file is ours to write;
+            // refusing here would strand the user with unsaved edits.
+            overwrite: true,
+        });
+        dirty.value = false;
+        return null;
+    }
+
+    /**
+     * Leave prefab editing and reopen the scene it was entered from.
+     *
+     * Returns false when there is nothing to go back to (the prefab was opened
+     * without a scene loaded), so the caller can say so instead of leaving an
+     * empty editor behind.
+     */
+    async function closePrefab(): Promise<boolean> {
+        const back = prefabReturnScene.value;
+        clearPrefabState();
+
+        if (!back) return false;
+        await load(back);
+
+        return true;
+    }
+
+    /**
+     * Forget that a prefab was open, without navigating.
+     *
+     * Kept separate from {@link closePrefab} because `load()` calls it: closing
+     * loads a scene, and a scene load that closed by loading again would
+     * recurse.
+     */
+    function clearPrefabState() {
+        editingPrefab.value = null;
+        prefabWritable.value = true;
+        prefabReturnScene.value = '';
+    }
+
     async function spawnPrefab(path: string, parent: string | null = null): Promise<string> {
         const result = await commands.spawnPrefab(path, parent);
         await refreshHierarchy();
@@ -297,6 +406,29 @@ export const useSceneStore = defineStore('scene', () => {
         await commands.deleteEntity(entityName);
         await refreshHierarchy();
         dirty.value = true;
+    }
+
+    /** Copy entities next to the originals; returns the new names. */
+    async function duplicateEntities(entityNames: string[]): Promise<string[]> {
+        if (entityNames.length === 0) return [];
+        const result = await commands.duplicateEntity(entityNames);
+        await refreshHierarchy();
+        dirty.value = true;
+        await expandPreview();
+        return result.duplicated;
+    }
+
+    /** Every entity name in the document, for pruning a stale selection. */
+    function entityNames(): Set<string> {
+        const names = new Set<string>();
+        const walk = (nodes: EntityNode[]) => {
+            for (const n of nodes) {
+                names.add(n.name);
+                walk(n.children);
+            }
+        };
+        walk(entities.value);
+        return names;
     }
 
     async function addComponent(entityName: string, component: string) {
@@ -381,6 +513,8 @@ export const useSceneStore = defineStore('scene', () => {
         loading,
         sceneList,
         mode,
+        editingPrefab,
+        prefabWritable,
         entityCount,
         findEntity,
         expandPreview,
@@ -395,8 +529,13 @@ export const useSceneStore = defineStore('scene', () => {
         createEntity,
         createPrimitive,
         createSprite,
+        duplicateEntities,
+        entityNames,
         savePrefab,
         createPrefabClass,
+        openPrefab,
+        closePrefab,
+        exportFlattened,
         spawnPrefab,
         deleteEntity,
         addComponent,
