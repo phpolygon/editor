@@ -563,9 +563,10 @@ export const useTerrainEditorStore = defineStore('terrainEditor', () => {
      * Write the sculpted terrain back onto the entity it was opened from.
      *
      * The asset is saved first: layers and splat live only there, so skipping it
-     * would drop the painting work. What the component can hold then follows,
-     * property by property, so every field lands in the scene document's undo
-     * history like any other inspector edit.
+     * would drop the painting work. What the component can hold then follows as
+     * ONE batched edit across the terrain/collider/scatter components — applying
+     * a sculpt is a single action, so a single ctrl+Z has to take all of it back
+     * rather than peeling off one property at a time.
      */
     async function applyToEntity(): Promise<{ entity: string; asset: string | null }> {
         const link = linkedEntity.value;
@@ -576,22 +577,34 @@ export const useTerrainEditorStore = defineStore('terrainEditor', () => {
         if (saved) payload.name = saved.name;
 
         const scene = useSceneStore();
-        for (const [property, value] of Object.entries(terrainProperties(payload))) {
-            await scene.updateProperty(link.entity, link.componentClass, property, value);
-        }
+        const edits = [
+            {
+                entity: link.entity,
+                component: link.componentClass,
+                properties: terrainProperties(payload) as Record<string, unknown>,
+            },
+        ];
 
         if (link.colliderComponentClass) {
-            for (const [property, value] of Object.entries(colliderProperties(payload))) {
-                await scene.updateProperty(link.entity, link.colliderComponentClass, property, value);
-            }
+            edits.push({
+                entity: link.entity,
+                component: link.colliderComponentClass,
+                properties: colliderProperties(payload) as Record<string, unknown>,
+            });
         }
 
         // Scatter sets only travel when the entity already carries the
         // component that reads them; adding one silently is not this action's
         // job (the terrain panel places scatter).
         if (link.scatterComponentClass) {
-            await scene.updateProperty(link.entity, link.scatterComponentClass, 'sets', payload.scatter);
+            edits.push({
+                entity: link.entity,
+                component: link.scatterComponentClass,
+                properties: { sets: payload.scatter },
+            });
         }
+
+        await scene.updateProperties(edits);
 
         await scene.refreshHierarchy();
         dirty.value = false;

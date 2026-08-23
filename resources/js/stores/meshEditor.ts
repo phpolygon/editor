@@ -293,8 +293,18 @@ export const useMeshEditorStore = defineStore('meshEditor', () => {
                 error.value = result.errors[0] ?? 'Invalid graph';
                 throw new Error(error.value);
             }
-            await scene.updateProperty(link.entity, link.componentClass, 'nodes', cloneNodes(graph.value.nodes));
-            await scene.updateProperty(link.entity, link.componentClass, 'output', graph.value.output);
+            // Nodes and output describe one graph — write them as a single
+            // undoable step so ctrl+Z cannot strand an output on stale nodes.
+            await scene.updateProperties([
+                {
+                    entity: link.entity,
+                    component: link.componentClass,
+                    properties: {
+                        nodes: cloneNodes(graph.value.nodes),
+                        output: graph.value.output,
+                    },
+                },
+            ]);
             return { kind: 'graph' };
         }
 

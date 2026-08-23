@@ -14,6 +14,7 @@ use PHPolygon\Editor\Project\ProjectImporter;
 use PHPolygon\Editor\Project\ProjectLoader;
 use PHPolygon\Editor\Project\RecentProjects;
 use PHPolygon\Editor\Registry\ComponentRegistry;
+use PHPolygon\Editor\Scene\EntityFormatter;
 use PHPolygon\Editor\Support\Path;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -260,6 +261,46 @@ class EditorApiController extends Controller
     public function playStatus(Request $request, GameRunner $runner): JsonResponse
     {
         return response()->json(['ok' => true, 'data' => $runner->status((string) $request->input('id', ''))]);
+    }
+
+    /**
+     * The running game's live ECS world, for the editor's play-mode viewport.
+     *
+     * The game exports it itself (`Engine::enableEditorSync()`); this only reads
+     * what is on disk. `since` lets the poll skip unchanged snapshots — the
+     * engine only re-exports when the world structurally advances, so most
+     * polls have nothing new to send.
+     *
+     * A game that does not enable sync returns `available: false`, which the UI
+     * reports rather than leaving the viewport silently showing authored state.
+     */
+    public function playWorld(Request $request, GameRunner $runner): JsonResponse
+    {
+        $world = $runner->world((string) $request->input('id', ''));
+        if ($world === null) {
+            return response()->json(['ok' => true, 'data' => ['available' => false]]);
+        }
+
+        $since = (int) $request->input('since', 0);
+        if ($since > 0 && $world['mtime'] <= $since) {
+            return response()->json(['ok' => true, 'data' => [
+                'available' => true,
+                'changed' => false,
+                'mtime' => $world['mtime'],
+            ]]);
+        }
+
+        /** @var list<array<string, mixed>> $entities */
+        $entities = is_array($world['data']['entities'] ?? null)
+            ? array_values($world['data']['entities'])
+            : [];
+
+        return response()->json(['ok' => true, 'data' => [
+            'available' => true,
+            'changed' => true,
+            'mtime' => $world['mtime'],
+            'entities' => EntityFormatter::nestComponents($entities),
+        ]]);
     }
 
     public function playStop(Request $request, GameRunner $runner): JsonResponse

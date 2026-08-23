@@ -14,6 +14,7 @@ vi.mock('@/bridge/commands', () => ({
     listMeshes: vi.fn(),
     getMesh: vi.fn(),
     updateProperty: vi.fn(),
+    updateProperties: vi.fn(),
     getEntityHierarchy: vi.fn(),
     getMeshes: vi.fn(),
     getMaterials: vi.fn(),
@@ -136,18 +137,18 @@ describe('useMeshEditorStore — entity round trip', () => {
         const result = await store.applyToEntity();
 
         expect(result).toEqual({ kind: 'graph' });
-        expect(mocks.updateProperty).toHaveBeenCalledWith(
-            'Player',
-            'PHPolygon\\Component\\ProceduralMesh',
-            'nodes',
-            [{ id: 'sphere', type: 'sphere' }],
-        );
-        expect(mocks.updateProperty).toHaveBeenCalledWith(
-            'Player',
-            'PHPolygon\\Component\\ProceduralMesh',
-            'output',
-            'sphere',
-        );
+        // Nodes and output describe one graph, so they travel as one batched
+        // (single-undo) write rather than two independent property edits.
+        expect(mocks.updateProperties).toHaveBeenCalledWith([
+            {
+                entity: 'Player',
+                component: 'PHPolygon\\Component\\ProceduralMesh',
+                properties: {
+                    nodes: [{ id: 'sphere', type: 'sphere' }],
+                    output: 'sphere',
+                },
+            },
+        ]);
         expect(mocks.saveRawMesh).not.toHaveBeenCalled();
     });
 
@@ -158,6 +159,7 @@ describe('useMeshEditorStore — entity round trip', () => {
 
         await expect(store.applyToEntity()).rejects.toThrow(/ProceduralMesh/);
         expect(mocks.updateProperty).not.toHaveBeenCalled();
+        expect(mocks.updateProperties).not.toHaveBeenCalled();
     });
 
     it('applyToEntity bakes the mesh and repoints a MeshRenderer at it', async () => {

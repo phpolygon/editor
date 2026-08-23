@@ -140,6 +140,53 @@ class RunGameCommandTest extends TestCase
         $this->assertStringContainsString('GAME_EXITED:0', $this->log());
     }
 
+    public function test_offers_the_world_snapshot_path_to_the_game(): void
+    {
+        // How a game learns where to mirror its live world for the editor.
+        $this->writeGame("echo 'SYNC=' . getenv('PHPOLYGON_EDITOR_SYNC');\n");
+
+        Artisan::call('editor:run-game', [
+            'projectDir' => $this->projectDir,
+            'logFile' => $this->logFile,
+            '--command' => 'php game.php',
+            '--world-file' => $this->projectDir.'/world.json',
+        ]);
+
+        $this->assertStringContainsString('SYNC='.$this->projectDir.'/world.json', $this->log());
+    }
+
+    public function test_a_game_started_without_sync_sees_no_snapshot_path(): void
+    {
+        $this->writeGame("var_export(getenv('PHPOLYGON_EDITOR_SYNC'));\n");
+
+        Artisan::call('editor:run-game', [
+            'projectDir' => $this->projectDir,
+            'logFile' => $this->logFile,
+            '--command' => 'php game.php',
+        ]);
+
+        $this->assertStringContainsString('false', $this->log());
+    }
+
+    public function test_the_game_keeps_the_inherited_environment(): void
+    {
+        // proc_open REPLACES the environment when given one, so passing the sync
+        // path naively would strip PATH — and a shell-run `runCommand`, or a
+        // windowed game needing its display/session variables, would break.
+        putenv('PHPOLYGON_TEST_INHERITED=kept');
+        $this->writeGame("echo 'INHERITED=' . getenv('PHPOLYGON_TEST_INHERITED');\n");
+
+        Artisan::call('editor:run-game', [
+            'projectDir' => $this->projectDir,
+            'logFile' => $this->logFile,
+            '--command' => 'php game.php',
+            '--world-file' => $this->projectDir.'/world.json',
+        ]);
+
+        putenv('PHPOLYGON_TEST_INHERITED');
+        $this->assertStringContainsString('INHERITED=kept', $this->log());
+    }
+
     public function test_reports_a_missing_project_directory(): void
     {
         Artisan::call('editor:run-game', [

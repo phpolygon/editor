@@ -48,9 +48,53 @@ class GameRunner
             $log,
             '--command='.$runCommand,
             '--stop-file='.$this->stopPath($id),
+            '--world-file='.$this->worldPath($id),
         ]);
 
         return $id;
+    }
+
+    /**
+     * Where a play session mirrors its live ECS world.
+     *
+     * The game writes this itself via `Engine::enableEditorSync()`, which the
+     * project's boot class enables when it sees `PHPOLYGON_EDITOR_SYNC` in the
+     * environment. The editor only ever reads it — a game that does not opt in
+     * simply never creates the file, and Play behaves exactly as before.
+     */
+    public function worldPath(string $id): string
+    {
+        return $this->runsDir().DIRECTORY_SEPARATOR.$this->sanitizeId($id).'.world.json';
+    }
+
+    /**
+     * The live world snapshot for a session, or null when the game has not
+     * written one (sync not enabled, or not yet past its first frame).
+     *
+     * @return array{mtime: int, data: array<string, mixed>}|null
+     */
+    public function world(string $id): ?array
+    {
+        $path = $this->worldPath($id);
+        clearstatcache(true, $path);
+        if ($id === '' || ! is_file($path)) {
+            return null;
+        }
+
+        $raw = file_get_contents($path);
+        if ($raw === false || $raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            // A half-written file is normal: the game rewrites it in place while
+            // the editor polls. Skip this tick rather than reporting an error.
+            return null;
+        }
+
+        /** @var array<string, mixed> $decoded */
+        return ['mtime' => (int) filemtime($path), 'data' => $decoded];
     }
 
     /**

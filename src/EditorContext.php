@@ -39,17 +39,20 @@ class EditorContext
     public $loadWidgetArray = null;
 
     /**
-     * Optional persistence hook. Web-mode requests rebuild the editor
-     * context per request, so {@see SceneDocument} state would otherwise
-     * be lost between commands. The HTTP boot wires this to the session;
-     * NativePHP (which keeps one long-lived process) can leave it null.
+     * Optional persistence hook. Every request rebuilds the editor context, so
+     * {@see SceneDocument} state would otherwise be lost between commands. The
+     * HTTP boot wires this to the session.
+     *
+     * Receives the document's FULL state ({@see SceneDocument::toState()}),
+     * history included — persisting only the scene array is what used to make
+     * undo a no-op: the next request rebuilt the document with empty stacks.
      *
      * @var (callable(?array<string, mixed>): void)|null
      */
     public $persistDocumentArray = null;
 
     /**
-     * Inverse of $persistDocumentArray — restores the scene array when
+     * Inverse of $persistDocumentArray — restores the document when
      * activeDocument is requested but unset.
      *
      * @var (callable(): ?array<string, mixed>)|null
@@ -162,7 +165,9 @@ class EditorContext
             $loader = $this->loadDocumentArray;
             $data = $loader();
             if (is_array($data)) {
-                $this->activeDocument = new SceneDocument($data);
+                // fromState() also accepts a bare scene array, so a session
+                // written by an older build still loads (without history).
+                $this->activeDocument = SceneDocument::fromState($data);
             }
         }
 
@@ -179,7 +184,7 @@ class EditorContext
             return;
         }
         $persist = $this->persistDocumentArray;
-        $persist($this->activeDocument?->toArray());
+        $persist($this->activeDocument?->toState());
     }
 
     public function setActiveDocument(?SceneDocument $document): void

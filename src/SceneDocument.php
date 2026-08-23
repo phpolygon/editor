@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace PHPolygon\Editor;
 
-use RuntimeException;
-
 class SceneDocument
 {
     /** @var array<string, mixed> */
@@ -21,8 +19,25 @@ class SceneDocument
 
     private const MAX_UNDO = 100;
 
+    /** Marks the full-state shape {@see toState()} produces. */
+    private const STATE_VERSION = 1;
+
     /**
-     * @param array<string, mixed> $data Scene JSON structure (from SceneTranspiler::toArray)
+     * Byte budget for the undo/redo history when the document is handed to
+     * storage.
+     *
+     * The editor is stateless between HTTP requests: the document is written to
+     * the session after every mutation and rebuilt on the next one. History has
+     * to travel with it or undo does nothing at all — but a scene carrying a
+     * sculpted heightmap is megabytes, and 100 snapshots of it would blow up
+     * any session store. So the persisted history keeps the MOST RECENT
+     * snapshots that fit and drops the rest: recent undo steps are the ones
+     * anyone reaches for, and losing the oldest beats losing all of them.
+     */
+    private const HISTORY_BUDGET_BYTES = 2 * 1024 * 1024;
+
+    /**
+     * @param  array<string, mixed>  $data  Scene JSON structure (from SceneTranspiler::toArray)
      */
     public function __construct(array $data)
     {
@@ -45,6 +60,92 @@ class SceneDocument
         return $this->data;
     }
 
+    /**
+     * The document INCLUDING its undo/redo history, for storage that has to
+     * survive between requests.
+     *
+     * {@see toArray()} deliberately stays the plain scene shape — it is what
+     * the transpiler and every command consume. Persisting that alone is what
+     * silently disabled undo across HTTP: the next request rebuilt the document
+     * with empty stacks, so `undo()` had nothing to pop.
+     *
+     * @return array<string, mixed>
+     */
+    public function toState(): array
+    {
+        return [
+            '__doc' => self::STATE_VERSION,
+            'data' => $this->data,
+            'undo' => self::withinBudget($this->undoStack),
+            'redo' => self::withinBudget($this->redoStack),
+        ];
+    }
+
+    /**
+     * Rebuild a document from {@see toState()}.
+     *
+     * Also accepts a bare scene array, which is both what older sessions hold
+     * and what a caller that only has scene data can pass. Such a document
+     * simply starts with no history rather than failing to load.
+     *
+     * @param  array<string, mixed>  $state
+     */
+    public static function fromState(array $state): self
+    {
+        if (($state['__doc'] ?? null) !== self::STATE_VERSION || ! is_array($state['data'] ?? null)) {
+            return new self($state);
+        }
+
+        /** @var array<string, mixed> $data */
+        $data = $state['data'];
+        $document = new self($data);
+        $document->undoStack = self::snapshotList($state['undo'] ?? null);
+        $document->redoStack = self::snapshotList($state['redo'] ?? null);
+
+        return $document;
+    }
+
+    /**
+     * The newest snapshots that fit the budget, oldest-first order preserved.
+     *
+     * @param  list<string>  $snapshots
+     * @return list<string>
+     */
+    private static function withinBudget(array $snapshots): array
+    {
+        $kept = [];
+        $used = 0;
+        foreach (array_reverse($snapshots) as $snapshot) {
+            $size = strlen($snapshot);
+            if ($used + $size > self::HISTORY_BUDGET_BYTES) {
+                break;
+            }
+            $used += $size;
+            $kept[] = $snapshot;
+        }
+
+        return array_reverse($kept);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function snapshotList(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $snapshots = [];
+        foreach ($raw as $snapshot) {
+            if (is_string($snapshot)) {
+                $snapshots[] = $snapshot;
+            }
+        }
+
+        return $snapshots;
+    }
+
     public function getName(): string
     {
         return is_string($this->data['name'] ?? null) ? $this->data['name'] : '';
@@ -58,11 +159,12 @@ class SceneDocument
     public function getEntities(): array
     {
         $raw = $this->data['entities'] ?? [];
-        if (!is_array($raw)) {
+        if (! is_array($raw)) {
             return [];
         }
         /** @var list<array<string, mixed>> $entities */
         $entities = array_values($raw);
+
         return $entities;
     }
 
@@ -104,7 +206,7 @@ class SceneDocument
      * field survives {@see toArray()} and thus save, and the engine transpiler /
      * JsonSceneLoader round-trip it.
      *
-     * @param list<array<string, mixed>> $components Authored components ({_class, ...}).
+     * @param  list<array<string, mixed>>  $components  Authored components ({_class, ...}).
      */
     public function addPrefabInstance(string $name, string $prefabClass, array $components = [], ?string $parentName = null): void
     {
@@ -175,7 +277,7 @@ class SceneDocument
     // --- Component operations ---
 
     /**
-     * @param array<string, mixed> $defaults
+     * @param  array<string, mixed>  $defaults
      */
     public function addComponent(string $entityName, string $componentClass, array $defaults = []): void
     {
@@ -200,7 +302,7 @@ class SceneDocument
             $components = is_array($entity['components'] ?? null) ? $entity['components'] : [];
             $entity['components'] = array_values(array_filter(
                 $components,
-                fn(array $c) => ($c['_class'] ?? '') !== $componentClass,
+                fn (array $c) => ($c['_class'] ?? '') !== $componentClass,
             ));
         });
 
@@ -210,23 +312,62 @@ class SceneDocument
     public function updateProperty(string $entityName, string $componentClass, string $property, mixed $value): void
     {
         $this->pushUndo();
+        $this->writeProperties($entityName, $componentClass, [$property => $value]);
+        $this->dirty = true;
+    }
 
-        $this->modifyEntity($entityName, function (array &$entity) use ($componentClass, $property, $value) {
-            if (!is_array($entity['components'] ?? null)) {
+    /**
+     * Apply several property writes as ONE undoable step.
+     *
+     * A gizmo drag rewrites position + rotation + scale at once; sending those
+     * as separate {@see updateProperty()} calls would push three undo entries,
+     * so a single ctrl+Z would only undo the scale. Multi-entity edits collapse
+     * the same way — one drag stays one undo entry however many entities moved.
+     *
+     * @param  list<array{entity: string, component: string, properties: array<string, mixed>}>  $edits
+     */
+    public function applyPropertyEdits(array $edits): void
+    {
+        if ($edits === []) {
+            return;
+        }
+
+        $this->pushUndo();
+        foreach ($edits as $edit) {
+            $this->writeProperties($edit['entity'], $edit['component'], $edit['properties']);
+        }
+        $this->dirty = true;
+    }
+
+    /**
+     * Write properties onto one entity's component WITHOUT touching the undo
+     * stack — the callers above decide what counts as a single undoable step.
+     *
+     * @param  array<string, mixed>  $properties
+     */
+    private function writeProperties(string $entityName, string $componentClass, array $properties): void
+    {
+        if ($properties === []) {
+            return;
+        }
+
+        $this->modifyEntity($entityName, function (array &$entity) use ($componentClass, $properties) {
+            if (! is_array($entity['components'] ?? null)) {
                 return;
             }
             foreach ($entity['components'] as &$component) {
-                if (!is_array($component)) {
+                if (! is_array($component)) {
                     continue;
                 }
                 if (($component['_class'] ?? '') === $componentClass) {
-                    $component[$property] = $value;
+                    foreach ($properties as $property => $value) {
+                        $component[$property] = $value;
+                    }
+
                     return;
                 }
             }
         });
-
-        $this->dirty = true;
     }
 
     // --- Undo/Redo ---
@@ -269,12 +410,12 @@ class SceneDocument
 
     public function canUndo(): bool
     {
-        return !empty($this->undoStack);
+        return ! empty($this->undoStack);
     }
 
     public function canRedo(): bool
     {
-        return !empty($this->redoStack);
+        return ! empty($this->redoStack);
     }
 
     // --- Internal ---
@@ -292,7 +433,7 @@ class SceneDocument
     }
 
     /**
-     * @param list<array<string, mixed>> $entities
+     * @param  list<array<string, mixed>>  $entities
      * @return array<string, mixed>|null
      */
     private function findEntity(string $name, array $entities): ?array
@@ -310,11 +451,12 @@ class SceneDocument
                 }
             }
         }
+
         return null;
     }
 
     /**
-     * @param list<array<string, mixed>> $entities
+     * @param  list<array<string, mixed>>  $entities
      * @return list<array<string, mixed>>
      */
     private function removeEntityFromList(string $name, array $entities): array
@@ -334,12 +476,13 @@ class SceneDocument
             }
             $result[] = $entity;
         }
+
         return $result;
     }
 
     /**
-     * @param array<string, mixed> $newEntity
-     * @param list<array<string, mixed>> $entities
+     * @param  array<string, mixed>  $newEntity
+     * @param  list<array<string, mixed>>  $entities
      */
     private function addEntityToParent(string $name, string $parentName, array $newEntity, array &$entities): void
     {
@@ -348,6 +491,7 @@ class SceneDocument
                 $children = isset($entity['children']) && is_array($entity['children']) ? $entity['children'] : [];
                 $children[] = $newEntity;
                 $entity['children'] = $children;
+
                 return;
             }
             if (isset($entity['children']) && is_array($entity['children'])) {
@@ -360,13 +504,14 @@ class SceneDocument
     }
 
     /**
-     * @param list<array<string, mixed>> $entities
+     * @param  list<array<string, mixed>>  $entities
      */
     private function renameEntityInList(string $oldName, string $newName, array &$entities): void
     {
         foreach ($entities as &$entity) {
             if (($entity['name'] ?? null) === $oldName) {
                 $entity['name'] = $newName;
+
                 return;
             }
             if (isset($entity['children']) && is_array($entity['children'])) {
@@ -386,13 +531,14 @@ class SceneDocument
     }
 
     /**
-     * @param list<array<string, mixed>> $entities
+     * @param  list<array<string, mixed>>  $entities
      */
     private function modifyEntityInList(string $name, callable $modifier, array &$entities): void
     {
         foreach ($entities as &$entity) {
             if (($entity['name'] ?? null) === $name) {
                 $modifier($entity);
+
                 return;
             }
             if (isset($entity['children']) && is_array($entity['children'])) {

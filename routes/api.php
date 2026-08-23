@@ -16,6 +16,7 @@ Route::prefix('editor')->group(function () {
     Route::get('/project/build-status', [EditorApiController::class, 'buildStatus']);
     Route::post('/project/play-start', [EditorApiController::class, 'playStart']);
     Route::get('/project/play-status', [EditorApiController::class, 'playStatus']);
+    Route::get('/project/play-world', [EditorApiController::class, 'playWorld']);
     Route::post('/project/play-stop', [EditorApiController::class, 'playStop']);
     Route::post('/project/import', [EditorApiController::class, 'importProject']);
     Route::post('/project/import-dialog', [EditorApiController::class, 'importProjectDialog']);

@@ -273,6 +273,19 @@ export const useSceneStore = defineStore('scene', () => {
         return await commands.savePrefab(entityName, prefabName);
     }
 
+    /**
+     * Save a subtree as a PHP prefab class the scene can reference.
+     *
+     * Writes into the project's source tree, not into the scene, so nothing
+     * about the open document changes.
+     */
+    async function createPrefabClass(
+        entityName: string,
+        options: { className?: string; overwrite?: boolean } = {},
+    ) {
+        return await commands.createPrefabClass(entityName, options);
+    }
+
     async function spawnPrefab(path: string, parent: string | null = null): Promise<string> {
         const result = await commands.spawnPrefab(path, parent);
         await refreshHierarchy();
@@ -310,6 +323,26 @@ export const useSceneStore = defineStore('scene', () => {
         if (entity) {
             const comp = entity.components.find((c) => c._class === component);
             if (comp) {
+                comp.properties[property] = value;
+            }
+        }
+        dirty.value = true;
+    }
+
+    /**
+     * Write several properties as ONE undoable step — what a gizmo drag needs,
+     * since position/rotation/scale change together and per-property commands
+     * would make a single ctrl+Z undo only part of the drag.
+     */
+    async function updateProperties(edits: commands.PropertyEdit[]) {
+        if (edits.length === 0) return;
+        await commands.updateProperties(edits);
+        // Optimistic: mirror the same writes locally.
+        for (const edit of edits) {
+            const entity = findEntity(edit.entity);
+            const comp = entity?.components.find((c) => c._class === edit.component);
+            if (!comp) continue;
+            for (const [property, value] of Object.entries(edit.properties)) {
                 comp.properties[property] = value;
             }
         }
@@ -363,11 +396,13 @@ export const useSceneStore = defineStore('scene', () => {
         createPrimitive,
         createSprite,
         savePrefab,
+        createPrefabClass,
         spawnPrefab,
         deleteEntity,
         addComponent,
         removeComponent,
         updateProperty,
+        updateProperties,
         renameEntity,
         reparentEntity,
         undoAction,

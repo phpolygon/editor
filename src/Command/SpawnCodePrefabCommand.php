@@ -47,13 +47,75 @@ class SpawnCodePrefabCommand implements CommandInterface
             ? $this->args['parent']
             : null;
 
-        $doc->addPrefabInstance($name, $class, $this->sanitizeComponents($this->args['components'] ?? null), $parent);
+        $components = $this->sanitizeComponents($this->args['components'] ?? null);
+        $components = $this->withPlacementTransform($components, $context);
+
+        $doc->addPrefabInstance($name, $class, $components, $parent);
 
         return [
             'spawned' => $name,
             'prefab' => $class,
             'parent' => $parent,
         ];
+    }
+
+    /**
+     * Ensure the instance carries a transform.
+     *
+     * Placement is the one authored value every prefab instance needs — it is
+     * what `build()` reads as input and what the transpiler turns into
+     * `->at(...)`. Without the component there is nothing for the gizmo to grab
+     * and nothing for an inspector edit to write into: `update_property` only
+     * writes into a component that already exists, so setting a position would
+     * silently do nothing and every instance would stack at the origin.
+     *
+     * @param  list<array<string, mixed>>  $components
+     * @return list<array<string, mixed>>
+     */
+    private function withPlacementTransform(array $components, EditorContext $context): array
+    {
+        $transformClass = $context->manifest->defaultMode === '2d'
+            ? 'PHPolygon\\Component\\Transform2D'
+            : 'PHPolygon\\Component\\Transform3D';
+
+        foreach ($components as $component) {
+            $class = $component['_class'] ?? '';
+            // Respect a transform the caller supplied, in either dimension —
+            // a 3D prefab placed in a 2D project is the caller's call to make.
+            if ($class === 'PHPolygon\\Component\\Transform2D' || $class === 'PHPolygon\\Component\\Transform3D') {
+                return $components;
+            }
+        }
+
+        $components[] = array_merge(
+            ['_class' => $transformClass],
+            $this->schemaDefaults($transformClass, $context),
+        );
+
+        return $components;
+    }
+
+    /**
+     * Default property values for a component, as {@see AddComponentCommand}
+     * would write them — so an instance's transform looks the same however it
+     * got there, and the inspector has real values to show.
+     *
+     * @return array<string, mixed>
+     */
+    private function schemaDefaults(string $componentClass, EditorContext $context): array
+    {
+        if (! $context->components->has($componentClass)) {
+            return [];
+        }
+
+        $defaults = [];
+        foreach ($context->components->get($componentClass)->properties as $property) {
+            if ($property->default !== null) {
+                $defaults[$property->name] = $property->default;
+            }
+        }
+
+        return $defaults;
     }
 
     /**
@@ -90,10 +152,10 @@ class SpawnCodePrefabCommand implements CommandInterface
             return $base;
         }
         $i = 2;
-        while ($doc->getEntity($base . '_' . $i) !== null) {
+        while ($doc->getEntity($base.'_'.$i) !== null) {
             $i++;
         }
 
-        return $base . '_' . $i;
+        return $base.'_'.$i;
     }
 }

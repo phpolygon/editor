@@ -14,6 +14,7 @@ import {
     Redo2,
     Plus,
     Package,
+    FileCode,
     Box,
     Circle,
     Cylinder,
@@ -113,7 +114,7 @@ async function saveAsPrefab() {
     const selected = selectionStore.selectedEntity;
     if (!selected) return;
     const name = await prompt({
-        title: 'Save as prefab',
+        title: 'Save as prefab snapshot',
         message: 'Name for the reusable prefab:',
         value: selected,
         placeholder: 'prefab_name',
@@ -124,6 +125,32 @@ async function saveAsPrefab() {
         addToast(`Saved prefab: ${result.name}`, 'success');
     } catch (e: any) {
         addToast(e?.message ?? 'Failed to save prefab', 'error');
+    }
+}
+
+/**
+ * Save the selection as a PHP prefab class — the reusable kind: scenes
+ * reference it and the engine rebuilds its geometry on load, so editing the
+ * prefab reaches every placement.
+ */
+async function saveAsPrefabClass() {
+    const selected = selectionStore.selectedEntity;
+    if (!selected) return;
+    const name = await prompt({
+        title: 'Save as prefab class',
+        message: 'Class name for the prefab:',
+        value: selected,
+        placeholder: 'StreetLantern',
+    });
+    if (name === null) return;
+    try {
+        const result = await sceneStore.createPrefabClass(selected, { className: name || undefined });
+        addToast(
+            `${result.replaced ? 'Updated' : 'Created'} prefab class: ${result.className}`,
+            'success',
+        );
+    } catch (e: any) {
+        addToast(e?.message ?? 'Failed to create the prefab class', 'error');
     }
 }
 
@@ -401,14 +428,33 @@ async function switchScene(sceneName: string) {
                         </template>
                     </template>
                 </Menu>
-                <Button
-                    :icon="Package"
-                    :disabled="!selectionStore.selectedEntity"
-                    :title="selectionStore.selectedEntity ? 'Save selection as prefab' : 'Select an entity first'"
-                    @click="saveAsPrefab"
-                >
-                    Prefab
-                </Button>
+                <Menu align="left" width="min-w-[260px]">
+                    <template #trigger="{ toggle }">
+                        <Button
+                            :icon="Package"
+                            :disabled="!selectionStore.selectedEntity"
+                            :title="selectionStore.selectedEntity ? 'Save selection as a prefab' : 'Select an entity first'"
+                            @click="toggle"
+                        >
+                            Prefab
+                        </Button>
+                    </template>
+                    <template #default="{ close }">
+                        <MenuLabel>Save selection as</MenuLabel>
+                        <MenuItem
+                            :icon="FileCode"
+                            @click="() => { saveAsPrefabClass(); close(); }"
+                        >
+                            PHP class — scenes reference it
+                        </MenuItem>
+                        <MenuItem
+                            :icon="Package"
+                            @click="() => { saveAsPrefab(); close(); }"
+                        >
+                            JSON snapshot — copied into scenes
+                        </MenuItem>
+                    </template>
+                </Menu>
             </ToolbarGroup>
 
             <!-- 2D / 3D mode -->

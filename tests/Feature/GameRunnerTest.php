@@ -129,6 +129,52 @@ class GameRunnerTest extends TestCase
         $this->assertFileDoesNotExist(dirname($this->runner->runsDir()).DIRECTORY_SEPARATOR.'evil.stop');
     }
 
+    private function writeWorld(string $id, string $contents): string
+    {
+        $path = $this->runner->worldPath($id);
+        file_put_contents($path, $contents);
+        $this->written[] = $path;
+
+        return $path;
+    }
+
+    public function test_world_is_null_when_the_game_never_mirrored_one(): void
+    {
+        // A game that does not opt into editor sync simply never writes it.
+        $this->assertNull($this->runner->world('0f0f0f0f0f0f0f0f'));
+    }
+
+    public function test_world_is_null_for_an_empty_id(): void
+    {
+        $this->assertNull($this->runner->world(''));
+    }
+
+    public function test_world_returns_the_snapshot_with_its_mtime(): void
+    {
+        $id = 'abcd0000abcd0000';
+        $path = $this->writeWorld($id, '{"name":"game_world","entities":[{"name":"Player"}]}');
+
+        $world = $this->runner->world($id);
+
+        $this->assertNotNull($world);
+        $this->assertSame((int) filemtime($path), $world['mtime']);
+        $this->assertSame('Player', $world['data']['entities'][0]['name']);
+    }
+
+    public function test_a_half_written_snapshot_is_skipped_rather_than_erroring(): void
+    {
+        // The game rewrites the file in place while the editor polls, so a poll
+        // can land mid-write. That is a normal tick to skip, not a failure.
+        $this->writeWorld('1234000012340000', '{"name":"game_world","entit');
+
+        $this->assertNull($this->runner->world('1234000012340000'));
+    }
+
+    public function test_world_ids_cannot_escape_the_runs_directory(): void
+    {
+        $this->assertNull($this->runner->world('../../../../etc/passwd'));
+    }
+
     public function test_current_id_is_empty_when_nothing_has_run(): void
     {
         $current = $this->runner->runsDir().DIRECTORY_SEPARATOR.'current';

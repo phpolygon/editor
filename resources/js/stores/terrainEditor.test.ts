@@ -11,6 +11,7 @@ vi.mock('@/bridge/commands', () => ({
     saveTerrain: vi.fn(),
     saveTexture: vi.fn(),
     updateProperty: vi.fn(),
+    updateProperties: vi.fn(),
     getEntityHierarchy: vi.fn(),
     getMeshes: vi.fn(),
     getMaterials: vi.fn(),
@@ -29,6 +30,24 @@ const mocks = commands as unknown as Record<string, Mock>;
 const TERRAIN_CLASS = 'PHPolygon\\Component\\Terrain';
 const COLLIDER_CLASS = 'PHPolygon\\Component\\HeightmapCollider3D';
 const SCATTER_CLASS = 'PHPolygon\\Component\\TerrainScatter';
+
+interface RecordedEdit {
+    entity: string;
+    component: string;
+    properties: Record<string, unknown>;
+}
+
+/** Every edit the store batched through `update_properties`, flattened. */
+function recordedEdits(): RecordedEdit[] {
+    return mocks.updateProperties.mock.calls.flatMap((c) => c[0] as RecordedEdit[]);
+}
+
+/** The properties written onto one component class across all batched edits. */
+function writtenFor(componentClass: string): Record<string, unknown> {
+    return recordedEdits()
+        .filter((e) => e.component === componentClass)
+        .reduce<Record<string, unknown>>((acc, e) => ({ ...acc, ...e.properties }), {});
+}
 
 /** A small terrain so the encoded heightmap stays cheap in tests. */
 function encodedHeights(gridWidth: number, gridDepth: number): string {
@@ -141,11 +160,7 @@ describe('useTerrainEditorStore — entity round trip', () => {
         expect(result).toEqual({ entity: 'Island', asset: 'Island' });
         expect(mocks.saveTerrain).toHaveBeenCalled();
 
-        const written = Object.fromEntries(
-            mocks.updateProperty.mock.calls
-                .filter((c) => c[1] === TERRAIN_CLASS)
-                .map((c) => [c[2], c[3]]),
-        );
+        const written = writtenFor(TERRAIN_CLASS);
         expect(written).toMatchObject({
             gridWidth: 9,
             gridDepth: 9,
@@ -157,6 +172,9 @@ describe('useTerrainEditorStore — entity round trip', () => {
         });
         expect(typeof written.heights).toBe('string');
         expect(mocks.getEntityHierarchy).toHaveBeenCalled();
+        // Applying a sculpt is one action: it has to reach the document as a
+        // single batched write, so one ctrl+Z takes all of it back.
+        expect(mocks.updateProperties).toHaveBeenCalledTimes(1);
     });
 
     it('applyToEntity keeps the collider bounds in step', async () => {
@@ -164,11 +182,7 @@ describe('useTerrainEditorStore — entity round trip', () => {
         await store.openForEntity(target({ colliderComponentClass: COLLIDER_CLASS }));
         await store.applyToEntity();
 
-        const collider = Object.fromEntries(
-            mocks.updateProperty.mock.calls
-                .filter((c) => c[1] === COLLIDER_CLASS)
-                .map((c) => [c[2], c[3]]),
-        );
+        const collider = writtenFor(COLLIDER_CLASS);
         expect(collider).toEqual({
             gridWidth: 9,
             gridDepth: 9,
@@ -184,7 +198,7 @@ describe('useTerrainEditorStore — entity round trip', () => {
         await store.openForEntity(target());
         await store.applyToEntity();
 
-        expect(mocks.updateProperty.mock.calls.some((c) => c[1] === SCATTER_CLASS)).toBe(false);
+        expect(recordedEdits().some((e) => e.component === SCATTER_CLASS)).toBe(false);
     });
 
     it('applyToEntity without a link is an error', async () => {

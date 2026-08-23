@@ -202,15 +202,15 @@ class CreateGameProjectCommand implements CommandInterface
     {
         $is3DLiteral = $is3D ? 'true' : 'false';
         $systems = $is3D
-            ? <<<PHP
-                    \$commandList = \$engine->commandList3D ?? new RenderCommandList();
-                        \$engine->world->addSystem(new Transform3DSystem());
-                        \$engine->world->addSystem(new Camera3DSystem(\$commandList, self::VIEW_W, self::VIEW_H));
-                        \$engine->world->addSystem(new Renderer3DSystem(\$engine->renderer3D, \$commandList));
+            ? <<<'PHP'
+                    $commandList = $engine->commandList3D ?? new RenderCommandList();
+                        $engine->world->addSystem(new Transform3DSystem());
+                        $engine->world->addSystem(new Camera3DSystem($commandList, self::VIEW_W, self::VIEW_H));
+                        $engine->world->addSystem(new Renderer3DSystem($engine->renderer3D, $commandList));
                 PHP
-            : <<<PHP
+            : <<<'PHP'
                     // 2D systems — adjust to your game's needs.
-                        \$engine->world->addSystem(new Transform3DSystem());
+                        $engine->world->addSystem(new Transform3DSystem());
                 PHP;
         $use3D = $is3D
             ? "use PHPolygon\\Rendering\\RenderCommandList;\nuse PHPolygon\\System\\Camera3DSystem;\nuse PHPolygon\\System\\Renderer3DSystem;\n"
@@ -257,6 +257,14 @@ class CreateGameProjectCommand implements CommandInterface
                     \$engine->events->dispatch(new SceneLoaded('{$sceneName}', \$scene));
 
         {$systems}
+                    // Launched from the editor's Play button: mirror the live
+                    // world into the snapshot it hands us, so the editor can
+                    // show what is actually running. Unset otherwise — a
+                    // standalone or packaged run never syncs.
+                    \$editorSync = getenv('PHPOLYGON_EDITOR_SYNC');
+                    if (is_string(\$editorSync) && \$editorSync !== '') {
+                        \$engine->enableEditorSync(\$editorSync);
+                    }
                 });
 
                 \$engine->run();

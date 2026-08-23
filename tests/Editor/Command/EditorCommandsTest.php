@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace PHPolygon\Editor\Tests\Command;
 
-use PHPUnit\Framework\TestCase;
 use PHPolygon\Component\Transform2D;
 use PHPolygon\Editor\Command\AddComponentCommand;
 use PHPolygon\Editor\Command\CreateEntityCommand;
@@ -12,6 +11,7 @@ use PHPolygon\Editor\Command\DeleteEntityCommand;
 use PHPolygon\Editor\Command\EditorCommandBus;
 use PHPolygon\Editor\Command\GetEntityHierarchyCommand;
 use PHPolygon\Editor\Command\ListComponentsCommand;
+use PHPolygon\Editor\Command\UpdatePropertiesCommand;
 use PHPolygon\Editor\Command\UpdatePropertyCommand;
 use PHPolygon\Editor\EditorContext;
 use PHPolygon\Editor\Project\ProjectManifest;
@@ -19,6 +19,7 @@ use PHPolygon\Editor\Registry\ComponentRegistry;
 use PHPolygon\Editor\Registry\SystemRegistry;
 use PHPolygon\Editor\SceneDocument;
 use PHPolygon\Scene\Transpiler\SceneTranspiler;
+use PHPUnit\Framework\TestCase;
 
 class EditorCommandsTest extends TestCase
 {
@@ -36,14 +37,14 @@ class EditorCommandsTest extends TestCase
             entryScene: 'MainMenu',
         );
 
-        $components = new ComponentRegistry();
+        $components = new ComponentRegistry;
         $components->register(Transform2D::class);
 
         $this->context = new EditorContext(
             manifest: $manifest,
             components: $components,
-            systems: new SystemRegistry(),
-            transpiler: new SceneTranspiler(),
+            systems: new SystemRegistry,
+            transpiler: new SceneTranspiler,
             projectDir: '/tmp/test-project',
         );
 
@@ -60,16 +61,16 @@ class EditorCommandsTest extends TestCase
         ]);
     }
 
-    public function testListComponents(): void
+    public function test_list_components(): void
     {
-        $cmd = new ListComponentsCommand();
+        $cmd = new ListComponentsCommand;
         $result = $cmd->execute($this->context);
 
         $this->assertArrayHasKey('components', $result);
         $this->assertArrayHasKey(Transform2D::class, $result['components']);
     }
 
-    public function testListComponentsGrouped(): void
+    public function test_list_components_grouped(): void
     {
         $cmd = new ListComponentsCommand(['grouped' => true]);
         $result = $cmd->execute($this->context);
@@ -78,7 +79,7 @@ class EditorCommandsTest extends TestCase
         $this->assertArrayHasKey('Core', $result['categories']);
     }
 
-    public function testCreateEntity(): void
+    public function test_create_entity(): void
     {
         $cmd = new CreateEntityCommand(['name' => 'Player']);
         $result = $cmd->execute($this->context);
@@ -87,7 +88,7 @@ class EditorCommandsTest extends TestCase
         $this->assertNotNull($this->context->activeDocument->getEntity('Player'));
     }
 
-    public function testDeleteEntity(): void
+    public function test_delete_entity(): void
     {
         $cmd = new DeleteEntityCommand(['name' => 'Camera']);
         $cmd->execute($this->context);
@@ -95,7 +96,7 @@ class EditorCommandsTest extends TestCase
         $this->assertNull($this->context->activeDocument->getEntity('Camera'));
     }
 
-    public function testAddComponent(): void
+    public function test_add_component(): void
     {
         $cmd = new AddComponentCommand([
             'entity' => 'Camera',
@@ -107,7 +108,7 @@ class EditorCommandsTest extends TestCase
         $this->assertCount(2, $camera['components']);
     }
 
-    public function testUpdateProperty(): void
+    public function test_update_property(): void
     {
         $cmd = new UpdatePropertyCommand([
             'entity' => 'Camera',
@@ -121,9 +122,81 @@ class EditorCommandsTest extends TestCase
         $this->assertSame(['x' => 50, 'y' => 100], $camera['components'][0]['position']);
     }
 
-    public function testGetEntityHierarchy(): void
+    public function test_update_properties_writes_every_field(): void
     {
-        $cmd = new GetEntityHierarchyCommand();
+        $cmd = new UpdatePropertiesCommand([
+            'edits' => [
+                [
+                    'entity' => 'Camera',
+                    'component' => Transform2D::class,
+                    'properties' => ['position' => ['x' => 7, 'y' => 8], 'rotation' => 1.5],
+                ],
+            ],
+        ]);
+        $result = $cmd->execute($this->context);
+
+        $this->assertSame(1, $result['updated']);
+        $camera = $this->context->activeDocument->getEntity('Camera');
+        $this->assertSame(['x' => 7, 'y' => 8], $camera['components'][0]['position']);
+        $this->assertSame(1.5, $camera['components'][0]['rotation']);
+    }
+
+    /**
+     * The whole point of the batched command: a gizmo drag rewrites several
+     * fields, and one ctrl+Z has to take all of them back.
+     */
+    public function test_update_properties_is_one_undo_step(): void
+    {
+        $doc = $this->context->activeDocument;
+        (new UpdatePropertiesCommand([
+            'edits' => [
+                [
+                    'entity' => 'Camera',
+                    'component' => Transform2D::class,
+                    'properties' => ['position' => ['x' => 7, 'y' => 8], 'rotation' => 1.5],
+                ],
+            ],
+        ]))->execute($this->context);
+
+        $doc->undo();
+
+        $camera = $doc->getEntity('Camera');
+        $this->assertSame(['x' => 0, 'y' => 0], $camera['components'][0]['position']);
+        $this->assertArrayNotHasKey('rotation', $camera['components'][0]);
+        $this->assertFalse($doc->canUndo(), 'one batched edit must leave exactly one undo entry');
+    }
+
+    public function test_update_properties_spans_entities_in_one_step(): void
+    {
+        $doc = $this->context->activeDocument;
+        $doc->addEntity('Player');
+        $doc->addComponent('Player', Transform2D::class, ['position' => ['x' => 0, 'y' => 0]]);
+
+        (new UpdatePropertiesCommand([
+            'edits' => [
+                ['entity' => 'Camera', 'component' => Transform2D::class, 'properties' => ['position' => ['x' => 1, 'y' => 1]]],
+                ['entity' => 'Player', 'component' => Transform2D::class, 'properties' => ['position' => ['x' => 2, 'y' => 2]]],
+            ],
+        ]))->execute($this->context);
+
+        $this->assertSame(['x' => 1, 'y' => 1], $doc->getEntity('Camera')['components'][0]['position']);
+        $this->assertSame(['x' => 2, 'y' => 2], $doc->getEntity('Player')['components'][0]['position']);
+
+        $doc->undo();
+
+        $this->assertSame(['x' => 0, 'y' => 0], $doc->getEntity('Camera')['components'][0]['position']);
+        $this->assertSame(['x' => 0, 'y' => 0], $doc->getEntity('Player')['components'][0]['position']);
+    }
+
+    public function test_update_properties_rejects_missing_edits(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        (new UpdatePropertiesCommand([]))->execute($this->context);
+    }
+
+    public function test_get_entity_hierarchy(): void
+    {
+        $cmd = new GetEntityHierarchyCommand;
         $result = $cmd->execute($this->context);
 
         $this->assertArrayHasKey('entities', $result);
@@ -131,7 +204,7 @@ class EditorCommandsTest extends TestCase
         $this->assertSame('Camera', $result['entities'][0]['name']);
     }
 
-    public function testCommandBusDispatch(): void
+    public function test_command_bus_dispatch(): void
     {
         $bus = new EditorCommandBus($this->context);
         $bus->register('ListComponents', ListComponentsCommand::class);
@@ -140,7 +213,7 @@ class EditorCommandsTest extends TestCase
         $this->assertArrayHasKey('components', $result);
     }
 
-    public function testCommandBusUnknownThrows(): void
+    public function test_command_bus_unknown_throws(): void
     {
         $bus = new EditorCommandBus($this->context);
         $this->expectException(\RuntimeException::class);

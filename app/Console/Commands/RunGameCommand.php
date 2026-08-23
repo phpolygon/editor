@@ -31,7 +31,8 @@ class RunGameCommand extends Command
         {projectDir : The game project directory to run}
         {logFile : Where to stream the game output}
         {--command= : Shell command to run (defaults to the manifest entry point)}
-        {--stop-file= : Terminate the game when this file appears}';
+        {--stop-file= : Terminate the game when this file appears}
+        {--world-file= : Offer this path to the game as its editor-sync snapshot}';
 
     protected $description = 'Run a game project (used internally by the editor Play button)';
 
@@ -44,13 +45,14 @@ class RunGameCommand extends Command
         $logFile = (string) $this->argument('logFile');
         $stopFile = (string) $this->option('stop-file');
         $command = (string) $this->option('command');
+        $worldFile = (string) $this->option('world-file');
 
         $fh = fopen($logFile, 'w');
         if ($fh === false) {
             return self::FAILURE;
         }
 
-        $code = $this->superviseGame($projectDir, $command, $stopFile, $fh);
+        $code = $this->superviseGame($projectDir, $command, $stopFile, $fh, $worldFile);
 
         fwrite($fh, "\nGAME_EXITED:{$code}\n");
         fclose($fh);
@@ -66,7 +68,7 @@ class RunGameCommand extends Command
      *
      * @param  resource  $fh
      */
-    private function superviseGame(string $projectDir, string $command, string $stopFile, $fh): int
+    private function superviseGame(string $projectDir, string $command, string $stopFile, $fh, string $worldFile = ''): int
     {
         if (! is_dir($projectDir)) {
             fwrite($fh, "Project directory not found: {$projectDir}\n");
@@ -81,7 +83,7 @@ class RunGameCommand extends Command
         fflush($fh);
 
         $descriptors = [0 => ['pipe', 'r'], 1 => $fh, 2 => $fh];
-        $process = proc_open($resolved, $descriptors, $pipes, $projectDir);
+        $process = proc_open($resolved, $descriptors, $pipes, $projectDir, $this->gameEnv($worldFile));
         if (! is_resource($process)) {
             fwrite($fh, "Failed to start the game.\n");
 
@@ -112,6 +114,33 @@ class RunGameCommand extends Command
 
             usleep(self::POLL_MICROSECONDS);
         }
+    }
+
+    /**
+     * The environment the game runs in.
+     *
+     * Offers the live-world snapshot path as `PHPOLYGON_EDITOR_SYNC`. A game
+     * whose boot class looks for it calls `Engine::enableEditorSync()` and the
+     * editor can watch the running world; one that ignores it is unaffected.
+     *
+     * Passing an env array to proc_open REPLACES the environment rather than
+     * extending it, so the inherited one is merged in first — dropping PATH
+     * would break a shell-run `runCommand`, and dropping the display/session
+     * variables would stop a windowed game from opening at all.
+     *
+     * @return array<string, string>|null null keeps the inherited environment.
+     */
+    private function gameEnv(string $worldFile): ?array
+    {
+        if ($worldFile === '') {
+            return null;
+        }
+
+        /** @var array<string, string> $env */
+        $env = getenv();
+        $env['PHPOLYGON_EDITOR_SYNC'] = $worldFile;
+
+        return $env;
     }
 
     /**

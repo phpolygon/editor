@@ -34,9 +34,9 @@ class CreateGameProjectCommandTest extends TestCase
                 psr4Roots: [],
                 entryScene: '',
             ),
-            components: new ComponentRegistry(),
-            systems: new SystemRegistry(),
-            transpiler: new SceneTranspiler(),
+            components: new ComponentRegistry,
+            systems: new SystemRegistry,
+            transpiler: new SceneTranspiler,
             projectDir: $this->parentDir,
         );
     }
@@ -46,7 +46,7 @@ class CreateGameProjectCommandTest extends TestCase
         $this->rrmdir($this->parentDir);
     }
 
-    public function testScaffoldsCompleteProject(): void
+    public function test_scaffolds_complete_project(): void
     {
         $result = $this->create(['name' => 'My Cool Game']);
 
@@ -69,7 +69,7 @@ class CreateGameProjectCommandTest extends TestCase
         }
     }
 
-    public function testBuildJsonIsRunnable(): void
+    public function test_build_json_is_runnable(): void
     {
         $result = $this->create(['name' => 'Runner', 'version' => '2.1.0']);
         $build = json_decode((string) file_get_contents($result['projectDir'].'/build.json'), true);
@@ -82,7 +82,7 @@ class CreateGameProjectCommandTest extends TestCase
         $this->assertSame('com.phpolygon.runner', $build['identifier']);
     }
 
-    public function testGeneratedPhpIsSyntacticallyValid(): void
+    public function test_generated_php_is_syntactically_valid(): void
     {
         $result = $this->create(['name' => 'Syntax Check', 'sceneName' => 'Level One']);
         foreach (['game.php', 'src/Game.php', 'src/Scene/LevelOne.php'] as $f) {
@@ -92,7 +92,7 @@ class CreateGameProjectCommandTest extends TestCase
         }
     }
 
-    public function testBootClassAndGamePhpReferenceSameClass(): void
+    public function test_boot_class_and_game_php_reference_same_class(): void
     {
         $result = $this->create(['name' => 'Wired']);
         $gamePhp = (string) file_get_contents($result['projectDir'].'/game.php');
@@ -104,7 +104,19 @@ class CreateGameProjectCommandTest extends TestCase
         $this->assertStringContainsString('$engine->run();', $gameClass);
     }
 
-    public function testComposerRequiresEngineAndExtVio(): void
+    public function test_boot_class_opts_into_editor_sync(): void
+    {
+        // What makes the editor's play-mode viewport show the running world:
+        // the boot class enables sync when the editor offers a snapshot path,
+        // and stays silent for a standalone or packaged run.
+        $result = $this->create(['name' => 'Synced']);
+        $gameClass = (string) file_get_contents($result['projectDir'].'/src/Game.php');
+
+        $this->assertStringContainsString("getenv('PHPOLYGON_EDITOR_SYNC')", $gameClass);
+        $this->assertStringContainsString('$engine->enableEditorSync($editorSync);', $gameClass);
+    }
+
+    public function test_composer_requires_engine_and_ext_vio(): void
     {
         $result = $this->create(['name' => 'Deps', 'engineConstraint' => '^0.36']);
         $composer = json_decode((string) file_get_contents($result['projectDir'].'/composer.json'), true);
@@ -114,10 +126,10 @@ class CreateGameProjectCommandTest extends TestCase
         $this->assertSame('src/', $composer['autoload']['psr-4']['App\\']);
     }
 
-    public function testManifestUsesSceneAndMode(): void
+    public function test_manifest_uses_scene_and_mode(): void
     {
         $result = $this->create(['name' => 'Twine', 'mode' => '2d', 'sceneName' => 'Start']);
-        $manifest = (new ProjectLoader())->load($result['projectDir']);
+        $manifest = (new ProjectLoader)->load($result['projectDir']);
 
         $this->assertSame('Twine', $manifest->name);
         $this->assertSame('Start', $manifest->entryScene);
@@ -125,7 +137,7 @@ class CreateGameProjectCommandTest extends TestCase
         $this->assertSame(['App\\' => 'src'], $manifest->psr4Roots);
     }
 
-    public function testTwoDModeSetsIs3DFalse(): void
+    public function test_two_d_mode_sets_is3_d_false(): void
     {
         $result = $this->create(['name' => 'Flat', 'mode' => '2d']);
         $gameClass = (string) file_get_contents($result['projectDir'].'/src/Game.php');
@@ -133,7 +145,7 @@ class CreateGameProjectCommandTest extends TestCase
         $this->assertStringContainsString('is3D:   false', $gameClass);
     }
 
-    public function testExplicitNamespaceIsRespected(): void
+    public function test_explicit_namespace_is_respected(): void
     {
         $result = $this->create(['name' => 'Custom NS', 'namespace' => 'Acme\\Arcade']);
 
@@ -143,7 +155,7 @@ class CreateGameProjectCommandTest extends TestCase
         $this->assertSame('\\Acme\\Arcade\\Game::start();', $build['run']);
     }
 
-    public function testSteamFilesWhenEnabled(): void
+    public function test_steam_files_when_enabled(): void
     {
         $result = $this->create([
             'name' => 'Steamed',
@@ -169,33 +181,33 @@ class CreateGameProjectCommandTest extends TestCase
         $this->assertSame('483', $sb['uploads']['full']['depots']['macos-universal']);
     }
 
-    public function testNoSteamFilesByDefault(): void
+    public function test_no_steam_files_by_default(): void
     {
         $result = $this->create(['name' => 'Plain']);
         $this->assertFileDoesNotExist($result['projectDir'].'/steam_appid.txt');
         $this->assertFileDoesNotExist($result['projectDir'].'/steam-build.json');
     }
 
-    public function testSteamRequiresNumericAppId(): void
+    public function test_steam_requires_numeric_app_id(): void
     {
         $this->expectException(\RuntimeException::class);
         $this->create(['name' => 'BadSteam', 'steam' => ['enabled' => true, 'appId' => 'not-a-number']]);
     }
 
-    public function testThrowsForMissingName(): void
+    public function test_throws_for_missing_name(): void
     {
         $this->expectException(\RuntimeException::class);
         $this->create([]);
     }
 
-    public function testThrowsForExistingTarget(): void
+    public function test_throws_for_existing_target(): void
     {
         $this->create(['name' => 'Twice']);
         $this->expectException(\RuntimeException::class);
         $this->create(['name' => 'Twice']);
     }
 
-    public function testThrowsForInvalidNamespace(): void
+    public function test_throws_for_invalid_namespace(): void
     {
         $this->expectException(\RuntimeException::class);
         $this->create(['name' => 'Bad', 'namespace' => '1Invalid']);

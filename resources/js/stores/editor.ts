@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { get, post } from '@/bridge/api';
+import type { EntityNode } from '@/types';
 import type { WorkspaceId } from '@/workspaces';
 
 // Kept as an alias so existing imports of `Workspace` still resolve; the set of
@@ -12,6 +13,29 @@ interface PlayStatus {
     log: string;
     running: boolean;
     exitCode: number | null;
+}
+
+interface PlayWorld {
+    available: boolean;
+    changed?: boolean;
+    mtime?: number;
+    entities?: EntityNode[];
+}
+
+/**
+ * A live entity's Transform3D carries `parentEntityId`, but the world snapshot
+ * identifies entities by name only — there is no id to resolve the reference
+ * against. Child transforms are relative to their parent, so rendering them
+ * without that link would place them at plainly wrong positions. Until the
+ * engine's exporter emits entity ids, children are left out: an incomplete
+ * live view beats a misleading one.
+ */
+const TRANSFORM3D = 'PHPolygon\\Component\\Transform3D';
+
+function isChildEntity(entity: EntityNode): boolean {
+    const transform = entity.components.find((c) => c._class === TRANSFORM3D);
+    const parent = transform?.properties?.parentEntityId;
+    return typeof parent === 'number';
 }
 
 /** How often the editor polls a running game for new output. */
@@ -42,7 +66,21 @@ export const useEditorStore = defineStore('editor', () => {
     /** Whether the output console is expanded. */
     const consoleOpen = ref(false);
 
+    /**
+     * The running game's live ECS world, when it mirrors one back.
+     *
+     * Null while nothing is running, or when the game does not enable editor
+     * sync. The viewport renders this instead of the authored scene during
+     * play, so what is on screen is what the game actually has.
+     */
+    const liveEntities = ref<EntityNode[] | null>(null);
+    /** False once a running game has been seen not to mirror its world. */
+    const liveWorldAvailable = ref(true);
+    /** How many child entities the live view had to drop (see isChildEntity). */
+    const liveChildrenOmitted = ref(0);
+
     let playId = '';
+    let liveMtime = 0;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     function clearPoll() {
@@ -66,14 +104,50 @@ export const useEditorStore = defineStore('editor', () => {
                 return;
             }
 
+            await pollWorld();
             pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
         } catch {
             pollTimer = setTimeout(poll, POLL_RETRY_MS);
         }
     }
 
+    /**
+     * Fetch the live world, if the game mirrors one.
+     *
+     * `since` skips unchanged snapshots: the engine only re-exports when the
+     * world structurally advances, so most ticks send nothing back. Failures
+     * are swallowed — a missing live view must never interrupt the log poll
+     * that tells the user why their game crashed.
+     */
+    async function pollWorld() {
+        try {
+            const world = await get<PlayWorld>(
+                '/project/play-world?id=' + encodeURIComponent(playId) + '&since=' + liveMtime,
+            );
+
+            liveWorldAvailable.value = world.available;
+            if (!world.available || world.changed !== true) return;
+
+            const entities = world.entities ?? [];
+            const roots = entities.filter((e) => !isChildEntity(e));
+            liveChildrenOmitted.value = entities.length - roots.length;
+            liveEntities.value = roots;
+            liveMtime = world.mtime ?? 0;
+        } catch {
+            // Keep whatever the last successful poll produced.
+        }
+    }
+
+    function clearLiveWorld() {
+        liveEntities.value = null;
+        liveWorldAvailable.value = true;
+        liveChildrenOmitted.value = 0;
+        liveMtime = 0;
+    }
+
     function finish(exitCode: number | null) {
         clearPoll();
+        clearLiveWorld();
         playing.value = false;
         playStarting.value = false;
         playExitCode.value = exitCode;
@@ -100,6 +174,7 @@ export const useEditorStore = defineStore('editor', () => {
         playError.value = null;
         playExitCode.value = null;
         playLog.value = '';
+        clearLiveWorld();
 
         try {
             const res = await post<{ playId: string; command: string }>('/project/play-start');
@@ -130,6 +205,7 @@ export const useEditorStore = defineStore('editor', () => {
         const id = playId;
         playing.value = false;
         clearPoll();
+        clearLiveWorld();
         playId = '';
 
         try {
@@ -154,6 +230,9 @@ export const useEditorStore = defineStore('editor', () => {
         playError,
         playExitCode,
         consoleOpen,
+        liveEntities,
+        liveWorldAvailable,
+        liveChildrenOmitted,
         theme,
         workspace,
         play,

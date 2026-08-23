@@ -168,6 +168,22 @@ export function updateProperty(
     });
 }
 
+/** One entity's component properties, written as part of a batched edit. */
+export interface PropertyEdit {
+    entity: string;
+    component: string;
+    properties: Record<string, unknown>;
+}
+
+/**
+ * Write several properties — across one or more entities — as a single undoable
+ * step. A gizmo drag rewrites position/rotation/scale together, so sending them
+ * through `updateProperty` would leave three undo entries for one drag.
+ */
+export function updateProperties(edits: PropertyEdit[]): Promise<{ updated: number }> {
+    return cmd<{ updated: number }>('update_properties', { edits });
+}
+
 export function getEntityHierarchy(): Promise<HierarchyResponse> {
     return cmd<HierarchyResponse>('get_entity_hierarchy');
 }
@@ -437,6 +453,29 @@ export function savePrefab(
     prefabName: string | null = null,
 ): Promise<{ saved: boolean; name: string; path: string; relativePath: string }> {
     return cmd('save_prefab', { entityName, prefabName });
+}
+
+export interface PrefabClassResult {
+    created: boolean;
+    class: string;
+    className: string;
+    namespace: string;
+    path: string;
+    replaced: boolean;
+}
+
+/**
+ * Save an entity subtree as a PHP prefab CLASS in the project.
+ *
+ * Unlike `savePrefab` (a JSON snapshot that gets copied into a scene), scenes
+ * reference the class and the engine rebuilds its geometry on load — so scenes
+ * stay compact and editing the prefab reaches every placement.
+ */
+export function createPrefabClass(
+    entityName: string,
+    options: { className?: string; namespace?: string; overwrite?: boolean } = {},
+): Promise<PrefabClassResult> {
+    return cmd<PrefabClassResult>('create_prefab_class', { entityName, ...options });
 }
 
 /** Save a generated WAV (base64, no data-URL prefix needed) to assets/audio/. */

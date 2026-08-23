@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
+import { useEditorStore } from '@/stores/editor';
 import { useSceneStore } from '@/stores/scene';
 import { useSelectionStore } from '@/stores/selection';
 import { useTerrainEditorStore } from '@/stores/terrainEditor';
+import { useViewportStore } from '@/stores/viewport';
 import { EntitySync } from '@/three/entitySync';
 import { applyBrush, anchorAt, type StrokeAnchor } from '@/terrain/brushes';
 import { type Heightmap } from '@/terrain/heightmap';
@@ -23,7 +25,24 @@ const TRANSFORM3D_CLASS = 'PHPolygon\\Component\\Transform3D';
 const sceneStore = useSceneStore();
 const selectionStore = useSelectionStore();
 const terrainStore = useTerrainEditorStore();
+const viewportStore = useViewportStore();
+const editorStore = useEditorStore();
 const container = ref<HTMLDivElement | null>(null);
+
+/**
+ * True while the viewport shows the RUNNING game's world rather than the
+ * authored scene. Editing is off in that state: a gizmo drag or a pick would
+ * address live entities by name against the authored document, quietly writing
+ * to the wrong thing (or nothing at all).
+ */
+const showingLiveWorld = computed(
+    () => editorStore.playing && editorStore.liveEntities !== null,
+);
+
+/** What the viewport renders: the live world while playing, else the scene. */
+const renderEntities = computed(() =>
+    showingLiveWorld.value ? editorStore.liveEntities! : sceneStore.viewEntities,
+);
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
@@ -31,6 +50,7 @@ let camera: THREE.PerspectiveCamera | null = null;
 let orbit: OrbitControls | null = null;
 let gizmo: TransformControls | null = null;
 let outline: THREE.BoxHelper | null = null;
+let grid: THREE.GridHelper | null = null;
 let entityRoot: THREE.Group | null = null;
 let sync: EntitySync | null = null;
 let resizeObserver: ResizeObserver | null = null;
@@ -277,6 +297,10 @@ function onPointerUp(event: PointerEvent): void {
     pointerDownAt = null;
     if (dx * dx + dy * dy > 16) return; // dragged, don't pick
 
+    // Picking a live entity would select a name the authored document does not
+    // have, leaving the inspector blank and the selection meaningless.
+    if (showingLiveWorld.value) return;
+
     if (!sync || !entityRoot || !camera || !renderer) return;
     const ndc = pickerCoords(event);
     const raycaster = new THREE.Raycaster();
@@ -308,7 +332,9 @@ function refreshOutline(): void {
 
 function attachGizmo(): void {
     if (!gizmo || !sync) return;
-    const selected = selectionStore.selectedEntity;
+    // The live world is read-only: its entities exist in the running game, not
+    // in the document a transform write would land in.
+    const selected = showingLiveWorld.value ? null : selectionStore.selectedEntity;
     if (!selected) {
         gizmo.detach();
         return;
@@ -325,16 +351,20 @@ async function writeSelectedTransform(): Promise<void> {
     const obj = sync.getObject(selected);
     if (!obj) return;
 
-    const p = { x: obj.position.x, y: obj.position.y, z: obj.position.z };
-    const q = { x: obj.quaternion.x, y: obj.quaternion.y, z: obj.quaternion.z, w: obj.quaternion.w };
-    const s = { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z };
-
-    // Sequential to avoid race conditions in the backend SceneDocument.
-    // Lands as three undo entries today — batched set_transform is a
-    // follow-up.
-    await sceneStore.updateProperty(selected, TRANSFORM3D_CLASS, 'position', p);
-    await sceneStore.updateProperty(selected, TRANSFORM3D_CLASS, 'rotation', q);
-    await sceneStore.updateProperty(selected, TRANSFORM3D_CLASS, 'scale', s);
+    // One request, one undo entry: a drag changes position/rotation/scale
+    // together, so writing them per-property would make ctrl+Z undo only the
+    // last of the three.
+    await sceneStore.updateProperties([
+        {
+            entity: selected,
+            component: TRANSFORM3D_CLASS,
+            properties: {
+                position: { x: obj.position.x, y: obj.position.y, z: obj.position.z },
+                rotation: { x: obj.quaternion.x, y: obj.quaternion.y, z: obj.quaternion.z, w: obj.quaternion.w },
+                scale: { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z },
+            },
+        },
+    ]);
 }
 
 function focusOnSelection(): void {
@@ -387,18 +417,106 @@ function frameAll(): boolean {
     return true;
 }
 
+// Holding ctrl flips snapping for the duration of a drag — the DCC convention
+// (snap off by default, ctrl to snap; snap on, ctrl to move freely).
+let ctrlHeld = false;
+
+/** Whether a drag right now should snap, ctrl override included. */
+function snapActive(): boolean {
+    return viewportStore.snapEnabled !== ctrlHeld;
+}
+
+/**
+ * Push snap increments and gizmo space onto the TransformControls. Called
+ * whenever the settings, the ctrl override, or the gizmo itself change —
+ * three.js has no reactive binding, so every change has to be re-applied.
+ */
+function applyGizmoSettings(): void {
+    if (!gizmo) return;
+
+    if (snapActive()) {
+        gizmo.setTranslationSnap(viewportStore.translateStep);
+        gizmo.setRotationSnap(THREE.MathUtils.degToRad(viewportStore.rotateStep));
+        gizmo.setScaleSnap(viewportStore.scaleStep);
+    } else {
+        gizmo.setTranslationSnap(null);
+        gizmo.setRotationSnap(null);
+        gizmo.setScaleSnap(null);
+    }
+
+    gizmo.setSpace(viewportStore.gizmoSpace);
+}
+
+/**
+ * Rebuild the ground grid so one cell equals one snap step — a grid that
+ * disagrees with the snap increment is worse than no grid, because it invites
+ * lining objects up against lines they will never land on.
+ */
+function rebuildGrid(): void {
+    if (!scene) return;
+
+    if (grid) {
+        scene.remove(grid);
+        grid.geometry.dispose();
+        (grid.material as THREE.Material).dispose();
+        grid = null;
+    }
+
+    if (!viewportStore.showGrid) {
+        invalidate();
+        return;
+    }
+
+    const extent = 20;
+    // Cap the line count: a 0.1 step over the full extent is already 200 lines,
+    // and finer steps would trade readability for nothing.
+    const divisions = Math.min(200, Math.max(1, Math.round(extent / viewportStore.translateStep)));
+    grid = new THREE.GridHelper(extent, divisions, 0x444444, 0x2a2a2a);
+    (grid.material as THREE.Material).transparent = true;
+    (grid.material as THREE.Material).opacity = 0.6;
+    scene.add(grid);
+    invalidate();
+}
+
 function onKeyDown(event: KeyboardEvent): void {
     if (!gizmo) return;
     const tag = (event.target as HTMLElement | null)?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+    if (event.key === 'Control' && !ctrlHeld) {
+        ctrlHeld = true;
+        applyGizmoSettings();
+        return;
+    }
+
+    // Leave ctrl-combinations (undo, save, duplicate) to the global handler.
+    if (event.ctrlKey || event.metaKey) return;
 
     switch (event.key.toLowerCase()) {
         case 'w': gizmo.setMode('translate'); break;
         case 'e': gizmo.setMode('rotate'); break;
         case 'r': gizmo.setMode('scale'); break;
         case 'f': focusOnSelection(); break;
+        case 'x': viewportStore.toggleGizmoSpace(); break;
         case 'escape': selectionStore.selectEntity(null); break;
     }
+}
+
+function onKeyUp(event: KeyboardEvent): void {
+    if (event.key === 'Control' && ctrlHeld) {
+        ctrlHeld = false;
+        applyGizmoSettings();
+    }
+}
+
+/**
+ * Losing focus mid-drag (alt-tab, a dialog) means the keyup never arrives, so
+ * ctrl would stay latched and snapping would read as broken on return.
+ */
+function onWindowBlur(): void {
+    if (!ctrlHeld) return;
+    ctrlHeld = false;
+    applyGizmoSettings();
 }
 
 /**
@@ -446,10 +564,7 @@ function setup(): void {
     orbit.dampingFactor = 0.08;
     orbit.addEventListener('change', invalidate);
 
-    const grid = new THREE.GridHelper(20, 20, 0x444444, 0x2a2a2a);
-    (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.6;
-    scene.add(grid);
+    rebuildGrid();
     scene.add(new THREE.AxesHelper(2));
 
     const editorAmbient = new THREE.AmbientLight(0xffffff, 0.35);
@@ -465,8 +580,8 @@ function setup(): void {
     scene.add(entityRoot);
 
     sync = new EntitySync(entityRoot, invalidate);
-    sync.sync(sceneStore.viewEntities);
-    if (sceneStore.name && sceneStore.viewEntities.length > 0 && frameAll()) {
+    sync.sync(renderEntities.value);
+    if (!showingLiveWorld.value && sceneStore.name && renderEntities.value.length > 0 && frameAll()) {
         framedScene = sceneStore.name;
     }
 
@@ -489,12 +604,15 @@ function setup(): void {
     });
     const gizmoHelper = gizmo.getHelper();
     if (gizmoHelper) scene.add(gizmoHelper);
+    applyGizmoSettings();
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
     renderer.domElement.addEventListener('pointermove', onSculptPointerMove);
     renderer.domElement.addEventListener('pointercancel', endSculpt);
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onWindowBlur);
 
     resize();
     resizeObserver = new ResizeObserver(resize);
@@ -510,6 +628,9 @@ function cleanup(): void {
     cancelAnimationFrame(rafHandle);
     rafHandle = 0;
     window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', onWindowBlur);
+    ctrlHeld = false;
     resizeObserver?.disconnect();
     resizeObserver = null;
     if (renderer) {
@@ -521,6 +642,11 @@ function cleanup(): void {
     if (outline) {
         outline.geometry.dispose();
         outline = null;
+    }
+    if (grid) {
+        grid.geometry.dispose();
+        (grid.material as THREE.Material).dispose();
+        grid = null;
     }
     gizmo?.detach();
     gizmo?.dispose();
@@ -543,7 +669,7 @@ function cleanup(): void {
 }
 
 watch(
-    () => sceneStore.viewEntities,
+    renderEntities,
     (entities) => {
         if (suppressSyncWhileDragging) return;
         sync?.sync(entities);
@@ -552,8 +678,16 @@ watch(
         // Frame the camera the first time a freshly loaded scene yields non-empty
         // bounds, so the whole world (incl. its async-expanded prefab geometry)
         // is visible. Retries across entity changes until frameAll() succeeds
-        // (the authored anchors alone have no geometry to bound).
-        if (sceneStore.name && sceneStore.name !== framedScene && entities.length > 0 && frameAll()) {
+        // (the authored anchors alone have no geometry to bound). The live world
+        // is skipped: it re-exports as the game runs, and re-framing on every
+        // spawn would yank the camera around while the user is watching.
+        if (
+            !showingLiveWorld.value
+            && sceneStore.name
+            && sceneStore.name !== framedScene
+            && entities.length > 0
+            && frameAll()
+        ) {
             framedScene = sceneStore.name;
         }
         invalidate();
@@ -569,6 +703,27 @@ watch(
         bindSculptTarget();
         invalidate();
     },
+);
+
+// three.js holds no reactive binding to the store, so every snap/space change
+// has to be pushed onto the live TransformControls.
+watch(
+    () => [
+        viewportStore.snapEnabled,
+        viewportStore.translateStep,
+        viewportStore.rotateStep,
+        viewportStore.scaleStep,
+        viewportStore.gizmoSpace,
+    ],
+    () => {
+        applyGizmoSettings();
+        invalidate();
+    },
+);
+
+watch(
+    () => [viewportStore.showGrid, viewportStore.translateStep],
+    () => rebuildGrid(),
 );
 
 // Entering or leaving sculpt mode rebinds; the gizmo is detached while
