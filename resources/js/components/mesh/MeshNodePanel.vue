@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, type Component } from 'vue';
-import { Box, Circle, Cylinder, Square, Donut, Diamond, Triangle, Move3d, FlipHorizontal2, Combine, RotateCcw, FileBox, Upload, Pencil, Trash2, Boxes } from 'lucide-vue-next';
+import { Box, Circle, Cylinder, Square, Donut, Diamond, Triangle, Amphora, Bean, Move3d, FlipHorizontal2, Combine, RotateCcw, FileBox, Upload, Pencil, Trash2, Boxes } from 'lucide-vue-next';
 import PanelHeader from '@/components/layout/PanelHeader.vue';
 import Button from '@/components/ui/Button.vue';
 import { useMeshEditorStore } from '@/stores/meshEditor';
@@ -84,6 +84,8 @@ const generators: { type: string; label: string; icon: Component }[] = [
     { type: 'torus', label: 'Torus', icon: Donut },
     { type: 'octahedron', label: 'Octahedron', icon: Diamond },
     { type: 'wedge', label: 'Wedge', icon: Triangle },
+    { type: 'lathe', label: 'Lathe', icon: Amphora },
+    { type: 'ellipseLoft', label: 'Ellipse loft', icon: Bean },
 ];
 
 const operators: { type: string; label: string; icon: Component }[] = [
