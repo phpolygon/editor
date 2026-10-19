@@ -47,6 +47,25 @@ export interface NodeTypeDef {
     params: NodeParamDef[];
 }
 
+/**
+ * Numbered parameter rows for list-shaped node inputs (lathe profile points,
+ * loft rings): node params are plain numbers, so a list is spelled as
+ * `<prefix><i>_<field>` keys plus a count — exactly what the PHP evaluator reads.
+ */
+function numbered(prefix: string, count: number, fields: { key: string; label: string; default: (i: number) => number }[]): NodeParamDef[] {
+    const out: NodeParamDef[] = [];
+    for (let i = 0; i < count; i++) {
+        for (const f of fields) {
+            out.push({ key: `${prefix}${i}_${f.key}`, label: `${prefix.toUpperCase()}${i} ${f.label}`, default: f.default(i) });
+        }
+    }
+    return out;
+}
+
+/** How many profile points / loft rings the node inspector offers. */
+export const LATHE_MAX_POINTS = 8;
+export const LOFT_MAX_RINGS = 8;
+
 /** Node catalogue — kept in lockstep with the PHP evaluator's `build()`. */
 export const NODE_TYPES: Record<string, NodeTypeDef> = {
     box: {
@@ -102,6 +121,36 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
             { key: 'peakZ', label: 'Peak Z', default: 0 },
         ],
     },
+    lathe: {
+        type: 'lathe', label: 'Lathe', category: 'generator', inputs: [], requiredInputs: [], variadic: false,
+        params: [
+            { key: 'points', label: 'Points', default: 3, step: 1 },
+            { key: 'segments', label: 'Segments', default: 16, step: 1 },
+            ...numbered('p', LATHE_MAX_POINTS, [
+                { key: 'r', label: 'radius', default: (i) => (i === 1 ? 0.5 : 0) },
+                { key: 'y', label: 'height', default: (i) => i * 0.5 },
+            ]),
+        ],
+    },
+    ellipseLoft: {
+        type: 'ellipseLoft', label: 'Ellipse loft', category: 'generator', inputs: [], requiredInputs: [], variadic: false,
+        params: [
+            { key: 'rings', label: 'Rings', default: 2, step: 1 },
+            { key: 'segments', label: 'Segments', default: 16, step: 1 },
+            { key: 'capBottom', label: 'Cap bottom', default: 0.25 },
+            { key: 'capTop', label: 'Cap top', default: 0.25 },
+            { key: 'capSteps', label: 'Cap steps', default: 4, step: 1 },
+            ...numbered('r', LOFT_MAX_RINGS, [
+                { key: 'y', label: 'height', default: (i) => i * 0.5 },
+                { key: 'xp', label: '+X radius', default: () => 0.5 },
+                { key: 'xn', label: '−X radius', default: () => 0.5 },
+                { key: 'zp', label: '+Z radius', default: () => 0.5 },
+                { key: 'zn', label: '−Z radius', default: () => 0.5 },
+                { key: 'cx', label: 'centre X', default: () => 0 },
+                { key: 'cz', label: 'centre Z', default: () => 0 },
+            ]),
+        ],
+    },
     transform: {
         type: 'transform', label: 'Transform', category: 'operator', inputs: ['mesh'], requiredInputs: ['mesh'], variadic: false,
         params: [
@@ -120,6 +169,7 @@ export const NODE_TYPES: Record<string, NodeTypeDef> = {
         type: 'mirror', label: 'Mirror', category: 'operator', inputs: ['mesh'], requiredInputs: ['mesh'], variadic: false,
         params: [
             { key: 'axis', label: 'Axis (0/1/2)', default: 0, step: 1 },
+            { key: 'keep', label: 'Keep original (1/0)', default: 1, step: 1 },
         ],
     },
     combine: {
